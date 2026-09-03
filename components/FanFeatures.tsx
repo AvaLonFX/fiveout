@@ -230,7 +230,10 @@ export default function FanFeatures({ kind, standalone = false }: { kind: string
       );
   }
   async function share() {
-    const url = new URL(standalone ? "/full-court/play" : "/matchups", window.location.origin);
+    const origin = standalone
+      ? (process.env.NEXT_PUBLIC_SITE_URL || window.location.origin).replace(/\/$/, "")
+      : window.location.origin;
+    const url = new URL(standalone ? "/full-court/play" : "/matchups", origin);
     url.searchParams.set("a", a.join(","));
     url.searchParams.set("b", b.join(","));
     setSharedLink(url.toString());

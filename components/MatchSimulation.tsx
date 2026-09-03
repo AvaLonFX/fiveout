@@ -420,7 +420,8 @@ export default function MatchSimulation({
       });
       const data = await res.json();
       if (!res.ok) throw Error(data.error || "Unable to create challenge.");
-      const url = `${window.location.origin}${standalone ? "/full-court/play" : "/matchups"}?challenge=${data.code}`;
+      const origin = standalone ? (process.env.NEXT_PUBLIC_SITE_URL || window.location.origin).replace(/\/$/, "") : window.location.origin;
+      const url = `${origin}${standalone ? "/full-court/play" : "/matchups"}?challenge=${data.code}`;
       setShareUrl(url);
       await navigator.clipboard.writeText(url).catch(() => undefined);
       // The creator must enter the shared lobby too. Staying on the plain
@@ -435,7 +436,8 @@ export default function MatchSimulation({
   }
   async function copyInviteLink() {
     if (!challengeCode) return;
-    const url = `${window.location.origin}${standalone ? "/full-court/play" : "/matchups"}?challenge=${challengeCode}`;
+    const origin = standalone ? (process.env.NEXT_PUBLIC_SITE_URL || window.location.origin).replace(/\/$/, "") : window.location.origin;
+    const url = `${origin}${standalone ? "/full-court/play" : "/matchups"}?challenge=${challengeCode}`;
     await navigator.clipboard.writeText(url).catch(() => undefined);
     setShareUrl(url);
     setShareCopied(true);
@@ -493,7 +495,8 @@ export default function MatchSimulation({
   async function copyShareCard() {
     if (!activeGames.length) return;
     const wins = series?.wins || lobby?.wins || [0, 0], mvp = seriesStats.mvp;
-    const link = challengeCode ? `${window.location.origin}${standalone ? "/full-court/play" : "/matchups"}?challenge=${challengeCode}` : window.location.href;
+    const origin = standalone ? (process.env.NEXT_PUBLIC_SITE_URL || window.location.origin).replace(/\/$/, "") : window.location.origin;
+    const link = challengeCode ? `${origin}${standalone ? "/full-court/play" : "/matchups"}?challenge=${challengeCode}` : window.location.href;
     const text = [`🏀 ${standalone ? "FIVEOUT" : "QNBA Arena"} · BO${challengeBestOf || bestOf}`, `Lineup A ${wins[0]}–${wins[1]} Lineup B`, activeGames.map((g, i) => `G${i + 1}: ${g.score[0]}–${g.score[1]}`).join(" · "), mvp ? `⭐ Series MVP: ${mvp.name} — ${(mvp.pts / mvp.games).toFixed(1)} PPG, ${(mvp.reb / mvp.games).toFixed(1)} RPG, ${(mvp.ast / mvp.games).toFixed(1)} APG` : "", link].filter(Boolean).join("\n");
     await navigator.clipboard.writeText(text); setShareCopied(true); window.setTimeout(() => setShareCopied(false), 2500);
   }
