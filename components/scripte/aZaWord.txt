@@ -1,0 +1,1 @@
+“XGBoost nije poboljšao performanse na baznom feature setu; logistic regression je postigla bolji logloss i AUC. To sugerira da je odnos između odabranih značajki i ciljne varijable pretežno linearan.”

@@ -1,0 +1,290 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body:has(.full-court-root) .qnba-shell-sidebar,
+body:has(.full-court-root) .qnba-shell-header,
+body:has(.full-court-root) .qnba-shell-mobile-ticker {
+  display: none;
+}
+body:has(.full-court-root) .qnba-shell-content {
+  max-width: none;
+  padding: 0;
+}
+body:has(.full-court-root) .qnba-mobile-toggle,
+body:has(.full-court-root) .qnba-mobile-backdrop,
+body:has(.full-court-root) .qnba-mobile-drawer {
+  display: none !important;
+}
+
+.fiveout-loading {
+  position: relative;
+  display: grid;
+  min-height: 430px;
+  place-items: center;
+  align-content: center;
+  overflow: hidden;
+  border: 1px solid rgba(103, 232, 249, .16);
+  border-radius: 28px;
+  background:
+    radial-gradient(circle at 50% 30%, rgba(103, 232, 249, .09), transparent 34%),
+    linear-gradient(145deg, #0b1221, #070b15);
+  text-align: center;
+}
+.fiveout-loading::before {
+  content: "";
+  position: absolute;
+  inset: 24px;
+  border: 1px solid rgba(255,255,255,.05);
+  border-radius: 20px;
+}
+.fiveout-loading-court { position: relative; width: 112px; height: 96px; }
+.fiveout-loading-ball {
+  position: absolute;
+  left: 27px;
+  top: -7px;
+  width: 58px;
+  height: 58px;
+  overflow: visible;
+  filter: drop-shadow(0 7px 9px rgba(0,0,0,.38)) drop-shadow(0 0 7px rgba(103,232,249,.14));
+  animation: fiveout-bounce .72s cubic-bezier(.3,.7,.4,1) infinite alternate;
+}
+.fiveout-loading-shadow {
+  position: absolute;
+  left: 35px;
+  bottom: 2px;
+  width: 42px;
+  height: 8px;
+  border-radius: 50%;
+  background: rgba(0,0,0,.55);
+  filter: blur(2px);
+  animation: fiveout-shadow .72s ease-in-out infinite alternate;
+}
+@keyframes fiveout-bounce {
+  from { transform: translateY(0) rotate(0); }
+  to { transform: translateY(52px) rotate(150deg) scaleY(.92); }
+}
+@keyframes fiveout-shadow {
+  from { transform: scale(.55); opacity: .22; }
+  to { transform: scale(1); opacity: .65; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .fiveout-loading-ball, .fiveout-loading-shadow { animation-duration: 1.8s; }
+}
+
+@layer base {
+  html { font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+  :root {
+    /* Darker light background (no more white canvas) */
+    --background: 220 18% 90%;
+    --foreground: 222 47% 11%;
+
+    /* Cards are lighter than background */
+    --card: 0 0% 100%;
+    --card-foreground: 222 47% 11%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 222 47% 11%;
+
+    /* Primary stays dark */
+    --primary: 222 47% 11%;
+    --primary-foreground: 210 40% 98%;
+
+    /* Secondary / muted surfaces */
+    --secondary: 220 16% 88%;
+    --secondary-foreground: 222 47% 11%;
+
+    --muted: 220 16% 88%;
+    --muted-foreground: 215 16% 45%;
+
+    --accent: 220 16% 88%;
+    --accent-foreground: 222 47% 11%;
+
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 210 40% 98%;
+
+    /* Borders a bit stronger so cards pop */
+    --border: 220 15% 82%;
+    --input: 220 15% 82%;
+
+    --ring: 222 47% 11%;
+
+    --radius: 0.75rem;
+
+    /* Charts – leave as is */
+    --chart-1: 12 76% 61%;
+    --chart-2: 173 58% 39%;
+    --chart-3: 197 37% 24%;
+    --chart-4: 43 74% 66%;
+    --chart-5: 27 87% 67%;
+  }
+
+
+  .dark {
+    /* Softer dark (not pure black) */
+    --background: 222 47% 7%;
+    --foreground: 210 40% 98%;
+
+    --card: 222 47% 10%;
+    --card-foreground: 210 40% 98%;
+
+    --popover: 222 47% 10%;
+    --popover-foreground: 210 40% 98%;
+
+    --primary: 210 40% 98%;
+    --primary-foreground: 222 47% 11%;
+
+    --secondary: 217 19% 16%;
+    --secondary-foreground: 210 40% 98%;
+
+    --muted: 217 19% 16%;
+    --muted-foreground: 215 20% 65%;
+
+    --accent: 217 19% 16%;
+    --accent-foreground: 210 40% 98%;
+
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 210 40% 98%;
+
+    --border: 217 19% 18%;
+    --input: 217 19% 18%;
+
+    --ring: 210 40% 90%;
+
+    /* Keep your chart palette (unchanged) */
+    --chart-1: 220 70% 50%;
+    --chart-2: 160 60% 45%;
+    --chart-3: 30 80% 55%;
+    --chart-4: 280 65% 60%;
+    --chart-5: 340 75% 55%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+}
+
+/* Animacija za prelazak grafova */
+.fade-enter {
+  opacity: 0;
+  transform: translateY(-10px);
+}
+.fade-enter-active {
+  opacity: 1;
+  transform: translateY(0);
+  transition: opacity 300ms, transform 300ms;
+}
+.fade-exit {
+  opacity: 1;
+  transform: translateY(0);
+}
+.fade-exit-active {
+  opacity: 0;
+  transform: translateY(10px);
+  transition: opacity 300ms, transform 300ms;
+}
+
+/* Hide horizontal scrollbar for carousels */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none; /* IE/Edge */
+  scrollbar-width: none; /* Firefox */
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.2s ease-out;
+}
+/* Premium "lift + glow" card hover like Databallr */
+.card-hover {
+  transition: transform 180ms ease, box-shadow 180ms ease, border-color 180ms ease;
+  will-change: transform;
+}
+
+.card-hover:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 18px 45px rgba(15, 23, 42, 0.10);
+  border-color: rgba(249, 115, 22, 0.35); /* orange accent */
+}
+
+/* Subtle background gradient for the app (light mode) */
+.app-gradient {
+  background:
+    radial-gradient(900px 500px at 50% 0%, rgba(249, 115, 22, 0.10), transparent 55%),
+    radial-gradient(700px 420px at 15% 10%, rgba(59, 130, 246, 0.06), transparent 60%),
+    radial-gradient(700px 420px at 85% 15%, rgba(16, 185, 129, 0.05), transparent 60%),
+    hsl(var(--background));
+}
+/* Fix for embedded tables/components that hardcode light colors */
+.qnba-schedule-fix table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
+.qnba-schedule-fix th,
+.qnba-schedule-fix td {
+  color: hsl(var(--foreground)) !important;
+  border-color: hsl(var(--border)) !important;
+}
+
+.qnba-schedule-fix thead th {
+  background: hsl(var(--muted)) !important;
+}
+
+.qnba-schedule-fix tbody tr {
+  background: transparent !important;
+}
+
+.qnba-schedule-fix tbody tr:hover {
+  background: hsl(var(--accent)) !important;
+}
+
+/* if the component uses white backgrounds */
+.qnba-schedule-fix * {
+  background-color: transparent;
+}
+/* ===== Recharts (global dark-mode friendly) ===== */
+.recharts-text,
+.recharts-cartesian-axis-tick-value,
+.recharts-legend-item-text {
+  fill: hsl(var(--foreground)) !important;
+}
+
+.recharts-cartesian-grid line,
+.recharts-cartesian-grid path {
+  stroke: hsl(var(--border)) !important;
+}
+
+.recharts-tooltip-wrapper {
+  outline: none;
+}
+
+.recharts-default-tooltip {
+  background: hsl(var(--popover)) !important;
+  border: 1px solid hsl(var(--border)) !important;
+  border-radius: 12px !important;
+  color: hsl(var(--popover-foreground)) !important;
+}
+
+.recharts-tooltip-label,
+.recharts-tooltip-item {
+  color: hsl(var(--popover-foreground)) !important;
+}
