@@ -11,7 +11,7 @@ const json = (value: unknown, status = 200) =>
 
 export async function GET() {
   try {
-    const { owner } = await identity();
+    const { owner, signedIn } = await identity();
     const { data, error } = await admin()
       .from("match_results")
       .select("id,title,source,score,created_at,payload")
@@ -59,7 +59,7 @@ export async function POST(req: NextRequest) {
         { error: "This match expired. Simulate it again before saving." },
         400,
       );
-    const { owner } = await identity();
+    const { owner, signedIn } = await identity();
     const era = body.era === "alltime" ? "alltime" : "current";
     const result = await buildSavedMatch(body.sides, token.seed, era);
     const payload = { setup: body.sides, result, era };
@@ -75,7 +75,7 @@ export async function POST(req: NextRequest) {
       .select("id")
       .single();
     if (error) throw error;
-    return json({ id: data.id }, 201);
+    return json({ id: data.id, signedIn }, 201);
   } catch (error) {
     console.error("Save match failed", error);
     return json({ error: "Unable to save this match." }, 503);

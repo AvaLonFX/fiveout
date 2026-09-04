@@ -134,6 +134,8 @@ export default function MatchSimulation({
     [halftimePending, setHalftimePending] = useState(false),
     [halftimeApplied, setHalftimeApplied] = useState(!!challengeResult),
     [savedId, setSavedId] = useState<string | null>(null),
+    [savedToAccount, setSavedToAccount] = useState<boolean | null>(null),
+    [lineupsSaved, setLineupsSaved] = useState(false),
     [shareUrl, setShareUrl] = useState(""),
     [shareCopied, setShareCopied] = useState(false),
     [showFullLineups, setShowFullLineups] = useState(false),
@@ -462,12 +464,25 @@ export default function MatchSimulation({
       const data = await res.json();
       if (!res.ok) throw Error(data.error || "Unable to save match.");
       setSavedId(data.id);
+      setSavedToAccount(data.signedIn === true);
     } catch (event) {
       setError((event as Error).message);
     } finally {
       lock.current = false;
       setBusy(false);
     }
+  }
+  async function saveLineups() {
+    if (!result || lineupsSaved || lock.current) return;
+    lock.current = true; setBusy(true); setError("");
+    try {
+      for (const side of [0, 1]) {
+        const response = await fetch("/api/lineups", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: `Lineup ${side === 0 ? "A" : "B"} · ${result.profiles[side][0].name}`, era, side: sideSetup(side) }) });
+        const data = await response.json(); if (!response.ok) throw Error(data.error || "Unable to save lineups.");
+      }
+      setLineupsSaved(true);
+    } catch (event) { setError((event as Error).message); }
+    finally { lock.current = false; setBusy(false); }
   }
   const current = result?.plays[cursor - 1],
     finished = !!result && cursor >= result.plays.length,
@@ -1069,6 +1084,7 @@ export default function MatchSimulation({
                 <a className={button} href={standalone ? "/full-court/history" : "/matches"}>
                   Open match history
                 </a>
+                {standalone && savedToAccount && <button className={button} disabled={busy || lineupsSaved} onClick={() => void saveLineups()}>{lineupsSaved ? "Both lineups saved" : "Save both lineups"}</button>}
                 {!challengeCode && (
                   <button
                     className={button}
@@ -1076,12 +1092,15 @@ export default function MatchSimulation({
                       setResult(null);
                       setCursor(0);
                       setSavedId(null);
+                      setSavedToAccount(null);
+                      setLineupsSaved(false);
                     }}
                   >
                     Edit rotations
                   </button>
                 )}
               </div>
+              {standalone && savedId && savedToAccount === false && <div className="rounded-xl border border-cyan-300/25 bg-cyan-300/[.07] p-4"><p className="font-bold">Keep this matchup and track your record.</p><p className="mt-1 text-sm text-foreground/60">It is saved in this browser for now. Sign in to keep your history across devices.</p><a href="/full-court/account" className="mt-3 inline-block rounded-lg bg-cyan-300 px-4 py-2 text-sm font-black text-[#06101a]">Create or sign in to your account</a></div>}
               <section className="rounded-xl border p-4">
                 <h3 className="font-bold">{standalone ? "League scoring reference" : "NBA scoring reference"}</h3>
                 <p className="text-sm text-foreground/70 mt-2">

@@ -116,6 +116,8 @@ export default function FanFeatures({ kind, standalone = false }: { kind: string
     void load().then(async (d) => {
       if (kind === "matchups" && d) {
         const params = new URLSearchParams(window.location.search);
+        const requestedEra = params.get("era") === "alltime" ? "alltime" : "current";
+        if (requestedEra !== matchEra) { setMatchEra(requestedEra); return; }
         const challengeCode = params.get("challenge");
         if (challengeCode) {
           setStandaloneMode("challenge");

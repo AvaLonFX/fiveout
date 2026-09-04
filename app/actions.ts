@@ -139,15 +139,34 @@ export const resetPasswordAction = async (formData: FormData) => {
 export const signOutAction = async () => {
   const supabase = await createClient();
   await supabase.auth.signOut();
-  return redirect("/sign-in");
+  return redirect("/full-court");
 };
+
+export async function signInWithMagicLinkAction(formData: FormData) {
+  const email = String(formData.get("email") || "").trim().toLowerCase();
+  const redirectTo = safeRedirect(formData.get("redirectTo"), "/full-court/account");
+  if (!email || !email.includes("@"))
+    return redirect(`/full-court/account?error=${encodeURIComponent("Enter a valid email address.")}`);
+  const supabase = await createClient();
+  const origin = (await headers()).get("origin") || process.env.NEXT_PUBLIC_SITE_URL || "";
+  const { error } = await supabase.auth.signInWithOtp({
+    email,
+    options: {
+      shouldCreateUser: true,
+      emailRedirectTo: `${origin}/auth/callback?redirect_to=${encodeURIComponent(redirectTo)}`,
+    },
+  });
+  if (error)
+    return redirect(`/full-court/account?error=${encodeURIComponent("Could not send the sign-in link. Please try again.")}`);
+  return redirect(`/full-court/account?sent=${encodeURIComponent(email)}`);
+}
 export async function signInWithGoogleAction(formData: FormData) {
   const supabase = await createClient();
 
   const { data, error } = await supabase.auth.signInWithOAuth({
     provider: "google",
     options: {
-      redirectTo: `${process.env.NEXT_PUBLIC_SITE_URL || (await headers()).get("origin")}/auth/callback?redirect_to=${encodeURIComponent(safeRedirect(formData.get("redirectTo")))}`,
+      redirectTo: `${(await headers()).get("origin")}/auth/callback?redirect_to=${encodeURIComponent(safeRedirect(formData.get("redirectTo")))}`,
       // ili neka tvoja ruta na koju Supabase vraća usera
     },
   });
