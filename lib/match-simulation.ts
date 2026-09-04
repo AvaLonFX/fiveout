@@ -231,20 +231,29 @@ export function profile(
   const blk = rate("BLK", isCenter ? 1.3 : 0.4, 4);
   const threeShare = clamp(threeA / Math.max(1, fga), 0, 0.85);
   const shotValue = 2 * p2 * (1 - threeShare) + 3 * p3 * threeShare;
+  const roleFga = isCenter ? 11.5 : isGuard ? 14.5 : 13;
+  const roleAst = isGuard ? 4.5 : isCenter ? 2.5 : 3;
+  const roleShotValue = isCenter ? 1.1 : isGuard ? 1.06 : 1.07;
+  const roleDreb = isCenter ? 6.8 : isGuard ? 4 : 5;
+  const creationVolume = clamp(
+    (fga + 0.44 * fta) / (roleFga + 2),
+    0.35,
+    1.15,
+  );
   const offensiveImpact = clamp(
-    (shotValue - 1.04) * 12 +
-      (fga - 13) * 0.11 +
-      (ast - 3.5) * 0.18 -
-      (tov - 2) * 0.25,
-    -4.5,
-    6.5,
+    (shotValue - roleShotValue) * 10 * creationVolume +
+      (fga - roleFga) * 0.08 +
+      (ast - roleAst) * 0.17 -
+      (tov - 2) * 0.22,
+    -4,
+    5.5,
   );
   const defensiveImpact = clamp(
-    (stl - 1) * 0.9 +
-      (blk - (isCenter ? 1.1 : 0.35)) * 0.55 +
-      (dreb - (isCenter ? 6.5 : 4)) * 0.1,
-    -3,
-    4.5,
+    (stl - 1) * 0.65 +
+      (blk - (isCenter ? 1.2 : 0.35)) * 0.22 +
+      (dreb - roleDreb) * 0.04,
+    -2.5,
+    3,
   );
   return {
     id: n("PLAYER_ID"),
@@ -365,22 +374,51 @@ export function simulate(
     pick(
       teams[side].map((p, i) => Math.max(0, (p[key] * rotation[side][i]) / 36)),
     );
-  const spacing = teams.map(
-    (t, side) =>
-      t.filter(
-        (p, i) => rotation[side][i] >= 10 && p.threeA >= 2 && p.p3 >= 0.33,
-      ).length,
-  );
-  const teamImpact = teams.map((team, side) => {
-    const minutes = rotation[side].reduce((total, value) => total + value, 0);
-    return team.reduce(
+  const expectedOnCourt = (
+    side: number,
+    value: (player: SimPlayer) => number,
+  ) =>
+    teams[side].reduce(
       (total, player, index) =>
-        total +
-        ((player.offensiveImpact + player.defensiveImpact) *
-          rotation[side][index]) /
-          minutes,
+        total + value(player) * (rotation[side][index] / 48),
       0,
     );
+  const diminishingDelta = (value: number, baseline: number) => {
+    const difference = value - baseline;
+    return Math.sign(difference) * Math.sqrt(Math.abs(difference));
+  };
+  // Expected lineup values are rotation-weighted and can never count more than
+  // five players. This avoids treating every shooter on an eight-man roster as
+  // if they shared the floor at once.
+  const spacing = teams.map((_, side) =>
+    expectedOnCourt(side, (player) =>
+      player.threeA >= 4 && player.p3 >= 0.33
+        ? 1
+        : player.threeA >= 2 && player.p3 >= 0.32
+          ? 0.7
+          : player.threeA >= 1 && player.p3 >= 0.3
+            ? 0.35
+            : 0,
+    ),
+  );
+  const rimProtection = teams.map((_, side) =>
+    expectedOnCourt(side, (player) => Math.sqrt(Math.max(0, player.blk))),
+  );
+  const teamOffense = teams.map((_, side) => {
+    const base = expectedOnCourt(side, (player) => player.offensiveImpact) / 5;
+    const spacingEffect = (spacing[side] - 3) * 0.32;
+    const playmaking = expectedOnCourt(side, (player) => player.ast);
+    const creationEffect = diminishingDelta(playmaking, 22) * 0.08;
+    const centerLoad = expectedOnCourt(side, (player) =>
+      roles(player.position).includes("C") ? 1 : 0,
+    );
+    const sizePenalty = Math.max(0, centerLoad - 1.6) * 0.3;
+    return base + spacingEffect + creationEffect - sizePenalty;
+  });
+  const teamDefense = teams.map((_, side) => {
+    const base = expectedOnCourt(side, (player) => player.defensiveImpact) / 5;
+    const rimEffect = diminishingDelta(rimProtection[side], 5) * 0.12;
+    return base + rimEffect;
   });
   const addPoints = (
     side: number,
@@ -467,12 +505,14 @@ export function simulate(
         secondaryIndex: number | undefined,
         secondarySide = side;
       const rebound = () => {
+        const offensiveRebounding = sum(side, "oreb");
+        const defensiveRebounding = sum(other, "dreb");
         const chance = clamp(
           0.24 +
-            0.01 * (sum(side, "oreb") - 7) -
-            0.004 * (sum(other, "dreb") - 25),
-          0.1,
-          0.43,
+            0.014 * diminishingDelta(offensiveRebounding, 7) -
+            0.007 * diminishingDelta(defensiveRebounding, 25),
+          0.14,
+          0.36,
         );
         const offense = random() < chance;
         const rSide = offense ? side : other,
@@ -493,7 +533,7 @@ export function simulate(
         (h.tov / (h.fga + 0.44 * h.fta + h.ast + h.tov)) * 1.2 +
           (activePlans[side] === "fast" ? 0.035 : 0) +
           (activePlans[other] === "pressure" ? 0.03 : 0) +
-          0.004 * (sum(other, "stl") - 5),
+          0.008 * diminishingDelta(sum(other, "stl"), 7),
         0.055,
         0.25,
       );
@@ -563,13 +603,12 @@ export function simulate(
           def.map((x, j) => Math.max(0, (x.blk * rotation[other][j]) / 36)),
         );
         const defender = def[defenderIndex];
-        const blocked =
-          random() <
-          clamp(
-            (defender.blk / (defender.blk + 30)) * (three ? 0.4 : 1),
-            0.003,
-            0.12,
-          );
+        const teamBlockChance = clamp(
+          0.035 + 0.012 * diminishingDelta(rimProtection[other], 5),
+          0.012,
+          0.09,
+        );
+        const blocked = random() < teamBlockChance * (three ? 0.3 : 1);
         const crowding = three
           ? 0
           : clamp((spacing[side] - 3) * 0.012, -0.036, 0.024);
@@ -579,9 +618,9 @@ export function simulate(
             0.0012 +
           (activePlans[side] === "fast" ? Math.max(0, period - 2) * 0.004 : 0);
         const matchupAdjustment = clamp(
-          (teamImpact[side] - teamImpact[other]) * 0.018,
-          -0.09,
-          0.09,
+          (teamOffense[side] - teamDefense[other]) * 0.017 - 0.015,
+          -0.07,
+          0.07,
         );
         const made =
           !blocked &&
@@ -685,7 +724,7 @@ export function simulate(
     `Possessions: A ${possessions[0]} — B ${possessions[1]}. These are observed differences, not proof of a single cause of victory.`,
   ];
   return {
-    model: "FIVEOUT matchup model v4",
+    model: "FIVEOUT matchup model v5",
     score,
     boxes,
     plays,
