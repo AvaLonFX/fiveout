@@ -32,3 +32,25 @@ revoke all on public.saved_lineups from public, anon, authenticated;
 
 comment on table public.saved_lineups is
   'Server-owned FIVEOUT rotations. Access is exposed only through route handlers after Supabase session verification.';
+
+create or replace function public.delete_fiveout_account_data(p_owner text)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if p_owner !~ '^user:[0-9a-f-]{36}$' then
+    raise exception 'Invalid account owner';
+  end if;
+
+  delete from public.saved_lineups where owner_key = p_owner;
+  delete from public.match_profiles where owner_key = p_owner;
+  delete from public.match_results where owner_key = p_owner;
+  delete from public.match_challenges
+    where creator_key = p_owner or opponent_key = p_owner;
+end;
+$$;
+
+revoke all on function public.delete_fiveout_account_data(text) from public, anon, authenticated;
+grant execute on function public.delete_fiveout_account_data(text) to service_role;

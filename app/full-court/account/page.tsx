@@ -3,6 +3,7 @@ import { createClient } from "@/utils/supabase/server";
 import { signInWithGoogleAction, signInWithMagicLinkAction, signOutAction } from "@/app/actions";
 import ArenaProfile from "@/components/ArenaProfile";
 import SavedLineups from "@/components/SavedLineups";
+import AccountDataControls from "@/components/AccountDataControls";
 
 export default async function AccountPage({ searchParams }: { searchParams: Promise<{ error?: string; sent?: string }> }) {
   const params = await searchParams;
@@ -19,11 +20,13 @@ export default async function AccountPage({ searchParams }: { searchParams: Prom
       <div className="my-5 flex items-center gap-3 text-xs text-slate-500"><span className="h-px flex-1 bg-white/10"/>OR<span className="h-px flex-1 bg-white/10"/></div>
       <form action={signInWithMagicLinkAction} className="space-y-3"><input type="hidden" name="redirectTo" value="/full-court/account"/><label className="block text-sm font-bold">Email address<input name="email" type="email" required autoComplete="email" placeholder="you@example.com" className="mt-2 w-full rounded-xl border border-white/15 bg-[#060914] p-3 font-normal outline-none focus:border-cyan-300"/></label><button className="w-full rounded-xl bg-cyan-300 px-4 py-3 font-black text-[#06101a] hover:bg-cyan-200">Email me a sign-in link</button></form>
       <p className="mt-5 text-center text-xs text-slate-500">No password required. Your guest match history will move to your account after sign-in.</p>
+      <p className="mt-3 text-center text-xs text-slate-500">By continuing, you agree to the <Link className="underline" href="/full-court/terms">Terms</Link> and acknowledge the <Link className="underline" href="/full-court/privacy">Privacy Policy</Link>.</p>
     </section>
   </main>;
   return <main className="mx-auto max-w-6xl space-y-8 px-5 py-10">
     <div className="flex flex-wrap items-center justify-between gap-4"><div><p className="text-xs font-black uppercase tracking-[.25em] text-cyan-300">FIVEOUT account</p><h1 className="mt-2 text-3xl font-black">Your locker room.</h1><p className="mt-2 text-slate-400">Signed in as {user.email}</p></div><div className="flex gap-2"><Link href="/full-court/history" className="rounded-xl border border-white/15 px-4 py-2 font-bold">Match history</Link><form action={signOutAction}><button className="rounded-xl border border-white/15 px-4 py-2 font-bold">Sign out</button></form></div></div>
     <ArenaProfile />
     <SavedLineups />
+    <AccountDataControls />
   </main>;
 }

@@ -21,5 +21,15 @@ export default function FullCourtLayout({ children }: { children: React.ReactNod
       </div>
     </header>
     {children}
+    <footer className="border-t border-white/10">
+      <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-3 px-5 py-6 text-xs text-slate-500">
+        <p>© {new Date().getFullYear()} FIVEOUT · Statistical basketball sandbox</p>
+        <nav aria-label="Legal" className="flex gap-4">
+          <Link href="/full-court/privacy" className="hover:text-slate-200">Privacy</Link>
+          <Link href="/full-court/terms" className="hover:text-slate-200">Terms</Link>
+          <button type="button" data-cookie-settings className="hover:text-slate-200">Cookie settings</button>
+        </nav>
+      </div>
+    </footer>
   </div>;
 }
