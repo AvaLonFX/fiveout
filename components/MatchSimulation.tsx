@@ -17,6 +17,7 @@ import {
 import { assignLineup } from "@/lib/lineup-roles";
 import PlayerImage from "@/components/PlayerImage";
 import TacticalCourt from "@/components/TacticalCourt";
+import { trackEvent } from "@/lib/gtag";
 const button =
   "rounded-xl border px-4 py-2 text-sm font-semibold hover:bg-foreground/10 disabled:opacity-40";
 const labels = Object.fromEntries(
@@ -155,6 +156,7 @@ export default function MatchSimulation({
   const autoJoinLock = useRef(false);
   const autoSavedToken = useRef<string | null>(null);
   const previousLobby = useRef<ChallengeState | null>(challengeState || null);
+  const completedResult = useRef<string | null>(null);
   const editableSide = !challengeCode
     ? -1
     : participantRole === "creator"
@@ -346,6 +348,7 @@ export default function MatchSimulation({
       const d = await res.json();
       if (!res.ok) throw Error(d.error || "Simulation failed.");
       setResult(d);
+      if (!resumeAtHalftime) trackEvent("simulation_started", { era, experience: experience || "embedded" });
       if (resumeAtHalftime) {
         const nextHalf = d.plays.findIndex(
           (play: Simulation["plays"][number]) => play.period >= 3,
@@ -422,6 +425,7 @@ export default function MatchSimulation({
       });
       const data = await res.json();
       if (!res.ok) throw Error(data.error || "Unable to create challenge.");
+      trackEvent("challenge_created", { era, mode: challengeMode, best_of: bestOf });
       const origin = standalone ? (process.env.NEXT_PUBLIC_SITE_URL || window.location.origin).replace(/\/$/, "") : window.location.origin;
       const url = `${origin}${standalone ? "/full-court/play" : "/matchups"}?challenge=${data.code}`;
       setShareUrl(url);
@@ -465,6 +469,7 @@ export default function MatchSimulation({
       if (!res.ok) throw Error(data.error || "Unable to save match.");
       setSavedId(data.id);
       setSavedToAccount(data.signedIn === true);
+      trackEvent("match_saved", { account: data.signedIn === true ? "signed_in" : "guest", era });
     } catch (event) {
       setError((event as Error).message);
     } finally {
@@ -481,12 +486,25 @@ export default function MatchSimulation({
         const data = await response.json(); if (!response.ok) throw Error(data.error || "Unable to save lineups.");
       }
       setLineupsSaved(true);
+      trackEvent("lineups_saved", { era });
     } catch (event) { setError((event as Error).message); }
     finally { lock.current = false; setBusy(false); }
   }
   const current = result?.plays[cursor - 1],
     finished = !!result && cursor >= result.plays.length,
     score = finished && result ? result.score : current?.score || [0, 0];
+  useEffect(() => {
+    if (!finished || !result) return;
+    const key = result.simulationToken || `${result.score[0]}-${result.score[1]}-${result.plays.length}`;
+    if (completedResult.current === key) return;
+    completedResult.current = key;
+    const margin = Math.abs(result.score[0] - result.score[1]);
+    trackEvent("simulation_completed", {
+      era,
+      experience: challengeCode ? "challenge" : experience || "embedded",
+      margin_band: margin <= 5 ? "close" : margin <= 15 ? "medium" : "wide",
+    });
+  }, [challengeCode, era, experience, finished, result]);
   useEffect(() => {
     const token = result?.simulationToken;
     if (!standalone || challengeCode || !finished || !token || savedId || autoSavedToken.current === token) return;

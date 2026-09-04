@@ -33,7 +33,7 @@ export default function CookieConsent() {
   return <>
     {choice === "accepted" && gaId && <>
       <Script src={`https://www.googletagmanager.com/gtag/js?id=${gaId}`} strategy="afterInteractive" />
-      <Script id="fiveout-ga" strategy="afterInteractive">{`window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments)}window.gtag=gtag;gtag('js',new Date());gtag('config','${gaId}',{anonymize_ip:true});`}</Script>
+      <Script id="fiveout-ga" strategy="afterInteractive">{`window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments)}window.gtag=gtag;gtag('js',new Date());gtag('config','${gaId}',{anonymize_ip:true,page_path:location.pathname,page_location:location.origin+location.pathname});`}</Script>
     </>}
     {ready && choice === null && <aside role="dialog" aria-label="Cookie choices" aria-live="polite" className="fixed inset-x-4 bottom-4 z-[100] mx-auto max-w-2xl rounded-2xl border border-cyan-300/25 bg-[#0a1020] p-5 shadow-2xl shadow-black/60">
       <h2 className="text-lg font-black text-white">Your cookie choice</h2>

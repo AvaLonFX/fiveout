@@ -8,6 +8,7 @@ import PlayerImage from "@/components/PlayerImage";
 import FiveOutBall from "@/components/FiveOutBall";
 import SearchPlayers from "@/components/nba_comp/SearchPlayers";
 import { FanPlayer, total } from "@/lib/fan-rules";
+import { trackEvent } from "@/lib/gtag";
 const links = [
   ["matchups", "Match simulator"],
   ["daily-five", "Daily Five"],
@@ -67,6 +68,7 @@ export default function FanFeatures({ kind, standalone = false }: { kind: string
   const [draggedPlayer, setDraggedPlayer] = useState<{ lineup: "a" | "b"; index: number } | null>(null);
   const eraChangedAt = useRef(0);
   const initialUrlHandled = useRef(false);
+  const challengeViewTracked = useRef(false);
   useEffect(() => {
     if (!standalone || kind !== "matchups") return;
     if (!window.localStorage.getItem("fiveout-guide-seen")) setShowGuide(true);
@@ -112,6 +114,7 @@ export default function FanFeatures({ kind, standalone = false }: { kind: string
     setB([]);
     setQuery("");
     setMatchActive(false);
+    trackEvent("era_selected", { era: next, experience: standaloneMode || "unknown" });
   }
   useEffect(() => {
     void load().then(async (d) => {
@@ -135,6 +138,10 @@ export default function FanFeatures({ kind, standalone = false }: { kind: string
             return;
           }
           setMatchChallenge(challenge);
+          if (!challengeViewTracked.current) {
+            challengeViewTracked.current = true;
+            trackEvent("challenge_opened", { era: challenge.era === "alltime" ? "alltime" : "current", mode: challenge.mode, role: challenge.role });
+          }
           setMatchEra(challenge.era === "alltime" ? "alltime" : "current");
           setSide(challenge.role === "creator" ? "a" : "b");
           if (challenge.result) {
@@ -387,12 +394,12 @@ export default function FanFeatures({ kind, standalone = false }: { kind: string
       {busy && !data && !standalone && <p role="status">Loading…</p>}
       {standalone && kind === "matchups" && data && !matchChallenge && !standaloneMode && (
         <section className="grid gap-4 md:grid-cols-2">
-          <button onClick={() => setStandaloneMode("quick")} className="group relative min-h-64 overflow-hidden rounded-[1.75rem] border border-cyan-300/25 bg-[radial-gradient(circle_at_80%_0%,rgba(34,211,238,.16),transparent_38%),#0a1120] p-7 text-left transition hover:-translate-y-1 hover:border-cyan-300/55">
+          <button onClick={() => { setStandaloneMode("quick"); trackEvent("experience_selected", { experience: "quick" }); }} className="group relative min-h-64 overflow-hidden rounded-[1.75rem] border border-cyan-300/25 bg-[radial-gradient(circle_at_80%_0%,rgba(34,211,238,.16),transparent_38%),#0a1120] p-7 text-left transition hover:-translate-y-1 hover:border-cyan-300/55">
             <span className="grid h-12 w-12 place-items-center rounded-2xl border border-cyan-300/30 bg-cyan-300/10 text-cyan-300"><Play size={21} fill="currentColor" /></span>
             <span className="mt-8 block text-xs font-black uppercase tracking-[.24em] text-cyan-300">Solo lab</span><h2 className="mt-2 text-3xl font-black">Quick Match</h2><p className="mt-3 max-w-sm text-sm leading-6 text-slate-400">Build both rotations, test tactics, and replay the matchup with a fresh outcome.</p>
             <span className="absolute bottom-7 right-7 grid h-10 w-10 place-items-center rounded-full border border-white/10 transition group-hover:bg-cyan-300 group-hover:text-[#06101a]"><ArrowRight size={18}/></span>
           </button>
-          <button onClick={() => setStandaloneMode("challenge")} className="group relative min-h-64 overflow-hidden rounded-[1.75rem] border border-violet-400/25 bg-[radial-gradient(circle_at_80%_0%,rgba(139,92,246,.18),transparent_38%),#0d1020] p-7 text-left transition hover:-translate-y-1 hover:border-violet-400/55">
+          <button onClick={() => { setStandaloneMode("challenge"); trackEvent("experience_selected", { experience: "challenge" }); }} className="group relative min-h-64 overflow-hidden rounded-[1.75rem] border border-violet-400/25 bg-[radial-gradient(circle_at_80%_0%,rgba(139,92,246,.18),transparent_38%),#0d1020] p-7 text-left transition hover:-translate-y-1 hover:border-violet-400/55">
             <span className="grid h-12 w-12 place-items-center rounded-2xl border border-violet-400/30 bg-violet-400/10 text-violet-300"><Swords size={22} /></span>
             <span className="mt-8 block text-xs font-black uppercase tracking-[.24em] text-violet-300">Head to head</span><h2 className="mt-2 text-3xl font-black">Challenge a Friend</h2><p className="mt-3 max-w-sm text-sm leading-6 text-slate-400">Open a shared lobby, choose the series, then build separately or alternate picks in a live draft.</p>
             <span className="absolute bottom-7 right-7 grid h-10 w-10 place-items-center rounded-full border border-white/10 transition group-hover:bg-violet-400 group-hover:text-[#06101a]"><Users size={18}/></span>
@@ -404,7 +411,7 @@ export default function FanFeatures({ kind, standalone = false }: { kind: string
         <>
           {standalone && !matchChallenge && standaloneMode && <div className="flex items-center justify-between rounded-xl border border-white/10 bg-white/[.025] px-4 py-3"><p className="text-sm"><span className="font-black text-cyan-300">{standaloneMode === "quick" ? "QUICK MATCH" : "FRIEND CHALLENGE"}</span><span className="ml-3 text-slate-400">{standaloneMode === "quick" ? "Choose an era, then build your roster." : challengeRule ? `${challengeRule === "draft" ? "Live Draft" : "Classic"} · ${matchEra === "alltime" ? "All-Time" : "Current"} · BO${challengeFormat}` : "Set the room rules before building."}</span></p><button className={button} onClick={() => { setStandaloneMode(null); setChallengeRule(null); setA([]); setB([]); }}>Change mode</button></div>}
           {standalone && standaloneMode === "challenge" && !matchChallenge && !challengeRule && (
-            <ChallengeSetupWizard era={matchEra} format={challengeFormat} mode={challengeChoice} onEra={changeEra} onFormat={setChallengeFormat} onMode={setChallengeChoice} onContinue={() => { setChallengeRule(challengeChoice); setA([]); setB([]); setSide("a"); }} />
+            <ChallengeSetupWizard era={matchEra} format={challengeFormat} mode={challengeChoice} onEra={changeEra} onFormat={(format) => { setChallengeFormat(format); trackEvent("challenge_format_selected", { best_of: format }); }} onMode={(mode) => { setChallengeChoice(mode); trackEvent("challenge_mode_selected", { mode }); }} onContinue={() => { setChallengeRule(challengeChoice); setA([]); setB([]); setSide("a"); trackEvent("challenge_setup_completed", { era: matchEra, mode: challengeChoice, best_of: challengeFormat }); }} />
           )}
           {!matchChallenge && !(standalone && standaloneMode === "challenge") && <div className={`inline-flex rounded-xl border p-1 ${standalone ? "border-white/10 bg-[#080e1b]" : "bg-background/50"}`} role="tablist" aria-label="Player era"><button role="tab" aria-selected={matchEra === "current"} className={`${button} ${matchEra === "current" ? standalone ? "border-cyan-300/30 bg-cyan-300 text-[#06101a]" : "bg-orange-500 text-black" : "border-transparent"}`} onClick={() => changeEra("current")}>Current</button><button role="tab" aria-selected={matchEra === "alltime"} className={`${button} ${matchEra === "alltime" ? standalone ? "border-violet-400/30 bg-violet-400 text-[#080811]" : "bg-orange-500 text-black" : "border-transparent"}`} onClick={() => changeEra("alltime")}>All-time</button></div>}
           {!(standalone && standaloneMode === "challenge" && !challengeRule) && <p className="text-foreground/60">

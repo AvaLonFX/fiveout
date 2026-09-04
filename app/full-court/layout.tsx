@@ -1,6 +1,8 @@
 import Link from "next/link";
 import FiveOutMark from "@/components/FiveOutMark";
 import FiveOutAccountNav from "@/components/FiveOutAccountNav";
+import GAListener from "@/components/ga/GAListener";
+import { Suspense } from "react";
 
 export const metadata = {
   title: "FIVEOUT · Build the matchup",
@@ -9,6 +11,7 @@ export const metadata = {
 
 export default function FullCourtLayout({ children }: { children: React.ReactNode }) {
   return <div className="full-court-root min-h-screen bg-[#060914] text-slate-100">
+    <Suspense fallback={null}><GAListener /></Suspense>
     <header className="sticky top-0 z-50 border-b border-white/10 bg-[#060914]/85 backdrop-blur-xl">
       <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-5">
         <Link href="/full-court"><FiveOutMark /></Link>
