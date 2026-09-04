@@ -66,6 +66,7 @@ export default function FanFeatures({ kind, standalone = false }: { kind: string
   const [showGuide, setShowGuide] = useState(false);
   const [draggedPlayer, setDraggedPlayer] = useState<{ lineup: "a" | "b"; index: number } | null>(null);
   const eraChangedAt = useRef(0);
+  const initialUrlHandled = useRef(false);
   useEffect(() => {
     if (!standalone || kind !== "matchups") return;
     if (!window.localStorage.getItem("fiveout-guide-seen")) setShowGuide(true);
@@ -116,10 +117,13 @@ export default function FanFeatures({ kind, standalone = false }: { kind: string
     void load().then(async (d) => {
       if (kind === "matchups" && d) {
         const params = new URLSearchParams(window.location.search);
-        const requestedEra = params.get("era") === "alltime" ? "alltime" : "current";
-        if (requestedEra !== matchEra) { setMatchEra(requestedEra); return; }
         const challengeCode = params.get("challenge");
-        if (challengeCode) {
+        if (!initialUrlHandled.current) {
+          initialUrlHandled.current = true;
+          const requestedEra = params.get("era") === "alltime" ? "alltime" : "current";
+          if (!challengeCode && requestedEra !== matchEra) { setMatchEra(requestedEra); return; }
+        }
+        if (challengeCode && !matchChallenge) {
           setStandaloneMode("challenge");
           const response = await fetch(
             `/api/match-challenges?code=${encodeURIComponent(challengeCode)}`,
@@ -543,7 +547,7 @@ export default function FanFeatures({ kind, standalone = false }: { kind: string
             </div>
           )}
           {(standaloneMode !== "challenge" || !!challengeRule || !!matchChallenge) &&
-            (!standalone ? a.length >= 5 && b.length >= 5 : !!matchChallenge || liveDraft || (standaloneMode === "quick" ? a.length >= 5 && b.length >= 5 : a.length >= 5)) && <MatchSimulation
+            (!standalone ? a.length >= 5 && b.length >= 5 : !!matchChallenge || liveDraft || challengeRule === "draft" || (standaloneMode === "quick" ? a.length >= 5 && b.length >= 5 : a.length >= 5)) && <MatchSimulation
             key={matchEra + "|" + a.join(",") + "|" + b.join(",")}
             a={a}
             b={b}
