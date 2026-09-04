@@ -19,7 +19,7 @@ export default function FullCourtHome() {
             <Link href="/full-court/play" className="rounded-xl bg-cyan-300 px-6 py-3 font-black text-[#06101a] shadow-[0_0_40px_rgba(34,211,238,.2)] hover:bg-cyan-200">Build your five →</Link>
             <a href="#how" className="rounded-xl border border-white/15 px-6 py-3 font-bold hover:bg-white/5">How it works</a>
           </div>
-          <div className="mt-10 flex gap-8 text-sm text-slate-400"><span><b className="block text-xl text-white">2 eras</b>Current + All-Time</span><span><b className="block text-xl text-white">BO1–BO7</b>Series formats</span><span><b className="block text-xl text-white">Live</b>Friend draft</span></div>
+          <div className="mt-10 flex gap-8 text-sm text-slate-400"><span><b className="block text-xl text-white">Multiple eras</b>Current + All-Time</span><span><b className="block text-xl text-white">BO1–BO7</b>Series formats</span><span><b className="block text-xl text-white">Live</b>Friend draft</span></div>
         </div>
         <div className="rounded-[2rem] border border-white/10 bg-white/[.045] p-4 shadow-2xl shadow-violet-950/40">
           <div className="rounded-2xl border border-white/10 bg-[#0a1020] p-5">
