@@ -270,7 +270,7 @@ export default function FanFeatures({ kind, standalone = false }: { kind: string
           if (!p) return <div key={`empty-${index}`} className="flex h-11 items-center gap-3 border-b border-dashed border-white/[.07] px-2 text-xs text-slate-600"><span className="grid h-7 w-7 place-items-center rounded-full border border-dashed border-white/10">{index + 1}</span><span>{index < 5 ? "Open starter slot" : "Open bench slot"}</span></div>;
           return <div key={p.id} draggable={canReorder} onDragStart={(event: DragEvent<HTMLDivElement>) => { setDraggedPlayer({ lineup: lineupKey, index }); event.dataTransfer.effectAllowed = "move"; }} onDragOver={(event: DragEvent<HTMLDivElement>) => { if (draggedPlayer?.lineup === lineupKey) { event.preventDefault(); event.dataTransfer.dropEffect = "move"; } }} onDrop={(event: DragEvent<HTMLDivElement>) => { event.preventDefault(); reorderLineup(lineupKey, index); }} onDragEnd={() => setDraggedPlayer(null)} className={`group flex h-11 items-center justify-between border-b border-white/[.07] px-2 last:border-0 ${canReorder ? "cursor-grab active:cursor-grabbing" : ""} ${draggedPlayer?.lineup === lineupKey && draggedPlayer.index === index ? "opacity-40" : ""}`}>
             <div className="flex min-w-0 items-center gap-2.5">{canReorder && <GripVertical size={14} className="shrink-0 text-slate-600 transition group-hover:text-slate-300" aria-hidden="true"/>}<PlayerImage playerId={p.id} alt={p.name} className="h-8 w-8 shrink-0 object-contain"/><div className="min-w-0"><p className="truncate text-xs font-bold">{p.name}</p><p className="text-[10px] text-slate-500">{p.position} · {index < 5 ? "Starter" : "Bench"} · {p.pts} PPG</p></div></div>
-            <button aria-label={`Remove ${p.name} from ${label}`} disabled={busy || !!data?.result || liveDraft || (!!matchChallenge && (label === "Lineup A" || matchChallenge.status !== "open"))} onClick={() => label === "Lineup B" ? setB(b.filter((id) => id !== p.id)) : setA(a.filter((id) => id !== p.id))} className="rounded-md px-2 py-1 text-[10px] font-bold text-slate-500 opacity-0 transition hover:bg-red-400/10 hover:text-red-300 group-hover:opacity-100 disabled:hidden">Remove</button>
+            <button aria-label={`Remove ${p.name} from ${label}`} disabled={busy || !!data?.result || liveDraft || (!!matchChallenge && (label === "Lineup A" || matchChallenge.status !== "open"))} onClick={() => label === "Lineup B" ? setB(b.filter((id) => id !== p.id)) : setA(a.filter((id) => id !== p.id))} className="rounded-md px-2 py-1 text-[10px] font-bold text-slate-400 transition hover:bg-red-400/10 hover:text-red-300 disabled:hidden sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100">Remove</button>
           </div>;
         })}
       </div>
@@ -353,11 +353,13 @@ export default function FanFeatures({ kind, standalone = false }: { kind: string
       </nav>}
       {!standalone && <h1 className="text-3xl font-bold">{header}</h1>}
       {error && (
-        <div role="alert" className={panel}>
-          <p>{error}</p>
-          <div className="flex gap-3 mt-3">
-            <button onClick={() => void load()} className={button}>
-              Retry
+        <div role="alert" className={`${panel} border-amber-300/25 bg-amber-300/[.045]`}>
+          <p className="text-xs font-black uppercase tracking-[.2em] text-amber-300">We could not load the court</p>
+          <h2 className="mt-2 text-xl font-black">Something interrupted the connection.</h2>
+          <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-400">{error}</p>
+          <div className="mt-4 flex flex-wrap gap-3">
+            <button onClick={() => void load()} disabled={busy} className="rounded-xl bg-cyan-300 px-4 py-2 text-sm font-black text-[#06101a] hover:bg-cyan-200 disabled:opacity-50">
+              {busy ? "Trying again…" : "Try again"}
             </button>
             {kind === "watchlist" && (
               <Link href="/sign-in" className={button}>
@@ -386,7 +388,7 @@ export default function FanFeatures({ kind, standalone = false }: { kind: string
           </button>
           <button onClick={() => setStandaloneMode("challenge")} className="group relative min-h-64 overflow-hidden rounded-[1.75rem] border border-violet-400/25 bg-[radial-gradient(circle_at_80%_0%,rgba(139,92,246,.18),transparent_38%),#0d1020] p-7 text-left transition hover:-translate-y-1 hover:border-violet-400/55">
             <span className="grid h-12 w-12 place-items-center rounded-2xl border border-violet-400/30 bg-violet-400/10 text-violet-300"><Swords size={22} /></span>
-            <span className="mt-8 block text-xs font-black uppercase tracking-[.24em] text-violet-300">Head to head</span><h2 className="mt-2 text-3xl font-black">Challenge a Friend</h2><p className="mt-3 max-w-sm text-sm leading-6 text-slate-400">Open a shared lobby, choose the series, and build through classic, cap, or live draft rules.</p>
+            <span className="mt-8 block text-xs font-black uppercase tracking-[.24em] text-violet-300">Head to head</span><h2 className="mt-2 text-3xl font-black">Challenge a Friend</h2><p className="mt-3 max-w-sm text-sm leading-6 text-slate-400">Open a shared lobby, choose the series, then build separately or alternate picks in a live draft.</p>
             <span className="absolute bottom-7 right-7 grid h-10 w-10 place-items-center rounded-full border border-white/10 transition group-hover:bg-violet-400 group-hover:text-[#06101a]"><Users size={18}/></span>
           </button>
           <div className="md:col-span-2 flex items-center justify-between gap-3 rounded-2xl border border-white/10 bg-white/[.025] px-5 py-4 text-sm text-slate-400"><span className="flex items-center gap-3"><Copy size={17} className="text-cyan-300"/><span><b className="text-slate-200">Joining someone?</b> Open their invite link and FIVEOUT takes you straight to the shared lobby.</span></span><button className="flex shrink-0 items-center gap-2 rounded-lg border border-white/10 px-3 py-2 hover:text-white" onClick={() => setShowGuide(true)}><HelpCircle size={16}/> How it works</button></div>
@@ -404,29 +406,15 @@ export default function FanFeatures({ kind, standalone = false }: { kind: string
               ? challengeRule === "draft" ? "Create the lobby now. Both coaches will draft from an empty roster." : "Build your team first. Your friend will build the opponent after opening the invite."
               : matchEra === "current" ? "Build two lineups from the latest verified season." : "Build lineups from stabilized career profiles across NBA history. Role, volume, efficiency, playmaking, and defense all affect the matchup."}
           </p>}
-          {(standaloneMode !== "challenge" || !!challengeRule || !!matchChallenge) && <MatchSimulation
-            key={matchEra + "|" + a.join(",") + "|" + b.join(",")}
-            a={a}
-            b={b}
-            teams={[selected(a), selected(b)]}
-            era={matchEra}
-            standalone={standalone}
-            experience={standaloneMode || (matchChallenge ? "challenge" : undefined)}
-            presetChallengeMode={challengeRule || undefined}
-            presetBestOf={challengeFormat}
-            challengeCode={matchChallenge?.code}
-            challengeCreator={matchChallenge?.creator}
-            challengeResult={matchChallenge?.result}
-            challengeBestOf={matchChallenge?.bestOf}
-            challengeSeries={matchChallenge?.series}
-            challengeState={matchChallenge}
-            onSimulationActiveChange={setMatchActive}
-            onChallengeUpdate={(next) => {
-              setMatchChallenge(next);
-              if (next.creator?.ids) setA(next.creator.ids);
-              if (next.opponent?.ids) setB(next.opponent.ids);
-            }}
-          />}
+          {standalone && showMatchupBuilder && !liveDraft && standaloneMode === "quick" && (
+            <section aria-label="Match setup progress" className="overflow-hidden rounded-2xl border border-white/10 bg-white/[.025]">
+              <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
+                <div><p className="text-[10px] font-black uppercase tracking-[.22em] text-slate-500">Match setup</p><p className="mt-1 text-sm font-bold">{a.length < 5 ? "Build Lineup A’s starting five" : b.length < 5 ? "Build Lineup B’s starting five" : a.length < 8 || b.length < 8 ? "Add bench depth or continue with five" : "Both rotations are ready"}</p></div>
+                <p className="text-xs text-slate-400"><b className="text-cyan-300">A {a.length}/8</b><span className="mx-2 text-slate-600">·</span><b className="text-violet-300">B {b.length}/8</b></p>
+              </div>
+              <div className="h-1 bg-white/5"><div className="h-full bg-gradient-to-r from-cyan-300 to-violet-400 transition-[width] duration-300" style={{ width: `${Math.min(100, ((a.length + b.length) / 16) * 100)}%` }} /></div>
+            </section>
+          )}
           {liveDraft && <section className="overflow-hidden rounded-2xl border border-violet-500/40 bg-gradient-to-br from-violet-500/15 via-card to-card">
             <div className="flex flex-wrap items-center justify-between gap-4 border-b border-violet-500/20 p-5">
               <div><p className="text-xs font-black uppercase tracking-[.25em] text-violet-400">Live draft room</p><h2 className="mt-1 text-2xl font-black">Pick {a.length + b.length + 1} of 16</h2><p className="mt-1 text-sm text-foreground/60">Lineup {matchChallenge.draftFirst === 0 ? "A" : "B"} won the opening pick. Turns alternate after every selection.</p></div>
@@ -552,6 +540,30 @@ export default function FanFeatures({ kind, standalone = false }: { kind: string
               </p>
             </div>
           )}
+          {(standaloneMode !== "challenge" || !!challengeRule || !!matchChallenge) &&
+            (!standalone ? a.length >= 5 && b.length >= 5 : !!matchChallenge || liveDraft || (standaloneMode === "quick" ? a.length >= 5 && b.length >= 5 : a.length >= 5)) && <MatchSimulation
+            key={matchEra + "|" + a.join(",") + "|" + b.join(",")}
+            a={a}
+            b={b}
+            teams={[selected(a), selected(b)]}
+            era={matchEra}
+            standalone={standalone}
+            experience={standaloneMode || (matchChallenge ? "challenge" : undefined)}
+            presetChallengeMode={challengeRule || undefined}
+            presetBestOf={challengeFormat}
+            challengeCode={matchChallenge?.code}
+            challengeCreator={matchChallenge?.creator}
+            challengeResult={matchChallenge?.result}
+            challengeBestOf={matchChallenge?.bestOf}
+            challengeSeries={matchChallenge?.series}
+            challengeState={matchChallenge}
+            onSimulationActiveChange={setMatchActive}
+            onChallengeUpdate={(next) => {
+              setMatchChallenge(next);
+              if (next.creator?.ids) setA(next.creator.ids);
+              if (next.opponent?.ids) setB(next.opponent.ids);
+            }}
+          />}
         </>
       )}
       {kind === "daily-five" && data && (
@@ -675,6 +687,7 @@ export default function FanFeatures({ kind, standalone = false }: { kind: string
                     .toLowerCase()
                     .includes(query.toLowerCase()),
                 )
+                .sort((x, y) => y.score - x.score)
                 .slice(0, matchEra === "alltime" ? 180 : 1000)
                 .map((p) => {
                   const draftedBy = liveDraft ? (a.includes(p.id) ? "A" : b.includes(p.id) ? "B" : null) : null;

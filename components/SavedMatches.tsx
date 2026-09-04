@@ -82,16 +82,17 @@ export default function SavedMatches({ standalone = false }: { standalone?: bool
   return (
     <main className="mx-auto max-w-6xl py-8 space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
+        {!standalone && <div>
           <p className="text-xs uppercase tracking-widest text-orange-500 font-bold">
-            {standalone ? "FIVEOUT Archive" : "QNBA Arena"}
+            QNBA Arena
           </p>
           <h1 className="text-3xl font-bold">Match history</h1>
           <p className="text-sm text-foreground/60 mt-1">
             Saved simulations and completed challenges tied to this account or
             browser.
           </p>
-        </div>
+        </div>}
+        {standalone && <p className="text-sm text-foreground/60">Select a match below to inspect the final score, box score, or replay.</p>}
         <Link href={standalone ? "/full-court/play" : "/matchups"} className={button}>
           Back to simulator
         </Link>
