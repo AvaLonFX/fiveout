@@ -531,8 +531,7 @@ export function simulate(
       };
       const toChance = clamp(
         (h.tov / (h.fga + 0.44 * h.fta + h.ast + h.tov)) * 1.2 +
-          (activePlans[side] === "fast" ? 0.035 : 0) +
-          (activePlans[other] === "pressure" ? 0.03 : 0) +
+          (activePlans[other] === "pressure" ? 0.015 : 0) +
           0.008 * diminishingDelta(sum(other, "stl"), 7),
         0.055,
         0.25,
@@ -604,11 +603,11 @@ export function simulate(
         );
         const defender = def[defenderIndex];
         const teamBlockChance = clamp(
-          0.035 + 0.012 * diminishingDelta(rimProtection[other], 5),
-          0.012,
-          0.09,
+          0.08 + 0.015 * diminishingDelta(rimProtection[other], 5),
+          0.035,
+          0.13,
         );
-        const blocked = random() < teamBlockChance * (three ? 0.3 : 1);
+        const blocked = random() < teamBlockChance * (three ? 0.4 : 1);
         const crowding = three
           ? 0
           : clamp((spacing[side] - 3) * 0.012, -0.036, 0.024);
@@ -616,9 +615,9 @@ export function simulate(
           Math.max(0, rotation[side][i] - 34) *
             Math.max(0, period - 1) *
             0.0012 +
-          (activePlans[side] === "fast" ? Math.max(0, period - 2) * 0.004 : 0);
+          (activePlans[side] === "fast" ? Math.max(0, period - 2) * 0.001 : 0);
         const matchupAdjustment = clamp(
-          (teamOffense[side] - teamDefense[other]) * 0.017 - 0.015,
+          (teamOffense[side] - teamDefense[other]) * 0.03 - 0.003,
           -0.07,
           0.07,
         );
