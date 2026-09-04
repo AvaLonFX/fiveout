@@ -402,7 +402,7 @@ export default function FanFeatures({ kind, standalone = false }: { kind: string
           {!(standalone && standaloneMode === "challenge" && !challengeRule) && <p className="text-foreground/60">
             {standalone && standaloneMode === "challenge" && !matchChallenge
               ? challengeRule === "draft" ? "Create the lobby now. Both coaches will draft from an empty roster." : "Build your team first. Your friend will build the opponent after opening the invite."
-              : matchEra === "current" ? "Build two lineups from the latest verified season." : "Build lineups from stored career profiles across NBA history. Career averages are used, not peak seasons."}
+              : matchEra === "current" ? "Build two lineups from the latest verified season." : "Build lineups from stabilized career profiles across NBA history. Role, volume, efficiency, playmaking, and defense all affect the matchup."}
           </p>}
           {(standaloneMode !== "challenge" || !!challengeRule || !!matchChallenge) && <MatchSimulation
             key={matchEra + "|" + a.join(",") + "|" + b.join(",")}

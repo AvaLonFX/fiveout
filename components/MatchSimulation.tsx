@@ -1209,7 +1209,7 @@ export default function MatchSimulation({
             </>
           )}
           <p className="text-xs text-foreground/60">
-            Source: {era === "alltime" ? `${result.season} · career totals converted to per-game profiles` : `NBA Stats · ${result.season} regular season · synced ${new Date(result.syncedAt).toLocaleString("en-US")}`}. {result.model}.
+            Source: {era === "alltime" ? `${result.season} · career totals converted to role- and sample-adjusted profiles` : `NBA Stats · ${result.season} regular season · synced ${new Date(result.syncedAt).toLocaleString("en-US")}`}. {result.model}.
             Results stay on this page only; replay does not generate a new
             outcome.
           </p>

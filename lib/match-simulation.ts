@@ -56,6 +56,8 @@ export type SimPlayer = {
   tov: number;
   stl: number;
   blk: number;
+  offensiveImpact: number;
+  defensiveImpact: number;
 };
 export type Box = {
   id: number;
@@ -181,6 +183,9 @@ export function profile(
     min = n("MIN");
   if (gp <= 0 || min <= 0 || n("FGA") <= 0) return null;
   const minutes = gp * min;
+  const isCenter = roles(position).includes("C");
+  const isGuard = roles(position).includes("G");
+  const threeVolume = (n("FG3A") * 36) / min;
   const rate = (key: string, prior: number, max: number) =>
     clamp(((n(key) * gp + (prior * 400) / 36) / (minutes + 400)) * 36, 0, max);
   const posterior = (
@@ -195,6 +200,52 @@ export function profile(
       0.05,
       0.95,
     );
+  const p2 = posterior(
+    Math.max(0, n("FGM") - n("FG3M")),
+    Math.max(0, n("FGA") - n("FG3A")),
+    isCenter ? 0.54 : 0.51,
+    150,
+  );
+  // Low-volume non-shooters should not inherit league-average three-point skill.
+  const threePrior = isCenter
+    ? threeVolume < 1
+      ? 0.27
+      : threeVolume < 3
+        ? 0.31
+        : 0.34
+    : threeVolume < 1
+      ? 0.3
+      : isGuard
+        ? 0.35
+        : 0.34;
+  const p3 = posterior(n("FG3M"), n("FG3A"), threePrior, 200);
+  const ft = posterior(n("FTM"), n("FTA"), isCenter ? 0.72 : 0.78, 75);
+  const fga = rate("FGA", isCenter ? 12 : 14, 30);
+  const fta = rate("FTA", isCenter ? 5 : 4, 15);
+  const threeA = rate("FG3A", isCenter ? 1.2 : isGuard ? 4 : 3, 16);
+  const oreb = rate("OREB", isCenter ? 2.5 : 1.2, 6);
+  const dreb = rate("DREB", isCenter ? 7 : 4.5, 14);
+  const ast = rate("AST", isGuard ? 4.5 : 2.8, 14);
+  const tov = rate("TOV", 2, 6);
+  const stl = rate("STL", 1, 3.5);
+  const blk = rate("BLK", isCenter ? 1.3 : 0.4, 4);
+  const threeShare = clamp(threeA / Math.max(1, fga), 0, 0.85);
+  const shotValue = 2 * p2 * (1 - threeShare) + 3 * p3 * threeShare;
+  const offensiveImpact = clamp(
+    (shotValue - 1.04) * 12 +
+      (fga - 13) * 0.11 +
+      (ast - 3.5) * 0.18 -
+      (tov - 2) * 0.25,
+    -4.5,
+    6.5,
+  );
+  const defensiveImpact = clamp(
+    (stl - 1) * 0.9 +
+      (blk - (isCenter ? 1.1 : 0.35)) * 0.55 +
+      (dreb - (isCenter ? 6.5 : 4)) * 0.1,
+    -3,
+    4.5,
+  );
   return {
     id: n("PLAYER_ID"),
     name: String(raw.PLAYER_NAME),
@@ -208,23 +259,20 @@ export function profile(
         : minutes < 1200
           ? "Moderate sample"
           : "Established sample",
-    fga: rate("FGA", 14, 30),
-    fta: rate("FTA", 4, 15),
-    threeA: rate("FG3A", 3.5, 16),
-    p2: posterior(
-      Math.max(0, n("FGM") - n("FG3M")),
-      Math.max(0, n("FGA") - n("FG3A")),
-      0.53,
-      150,
-    ),
-    p3: posterior(n("FG3M"), n("FG3A"), 0.35, 200),
-    ft: posterior(n("FTM"), n("FTA"), 0.77, 75),
-    oreb: rate("OREB", roles(position).includes("C") ? 2.5 : 1.2, 6),
-    dreb: rate("DREB", roles(position).includes("C") ? 7 : 4.5, 14),
-    ast: rate("AST", 3.5, 14),
-    tov: rate("TOV", 2, 6),
-    stl: rate("STL", 1, 3.5),
-    blk: rate("BLK", roles(position).includes("C") ? 1.3 : 0.4, 4),
+    fga,
+    fta,
+    threeA,
+    p2,
+    p3,
+    ft,
+    oreb,
+    dreb,
+    ast,
+    tov,
+    stl,
+    blk,
+    offensiveImpact,
+    defensiveImpact,
   };
 }
 export function simulate(
@@ -323,6 +371,17 @@ export function simulate(
         (p, i) => rotation[side][i] >= 10 && p.threeA >= 2 && p.p3 >= 0.33,
       ).length,
   );
+  const teamImpact = teams.map((team, side) => {
+    const minutes = rotation[side].reduce((total, value) => total + value, 0);
+    return team.reduce(
+      (total, player, index) =>
+        total +
+        ((player.offensiveImpact + player.defensiveImpact) *
+          rotation[side][index]) /
+          minutes,
+      0,
+    );
+  });
   const addPoints = (
     side: number,
     i: number,
@@ -348,7 +407,9 @@ export function simulate(
       .sort((a, b) => {
         const waveA = ((serial * 13 + a * 17 + side * 7) % 23) - 11;
         const waveB = ((serial * 13 + b * 17 + side * 7) % 23) - 11;
-        return rotation[side][b] + waveB * 0.45 - (rotation[side][a] + waveA * 0.45);
+        return (
+          rotation[side][b] + waveB * 0.45 - (rotation[side][a] + waveA * 0.45)
+        );
       });
     return [...unique, ...rest].slice(0, Math.min(5, teams[side].length));
   };
@@ -368,7 +429,8 @@ export function simulate(
         possessions[side]++;
         serial++;
       }
-      const lateClose = period >= 4 && left <= 120 && Math.abs(score[0] - score[1]) <= 8;
+      const lateClose =
+        period >= 4 && left <= 120 && Math.abs(score[0] - score[1]) <= 8;
       const duration = continuation
         ? 4 + Math.floor(random() * 10)
         : Math.round(
@@ -377,7 +439,8 @@ export function simulate(
               : activePlans[side] === "inside"
                 ? 12
                 : 10) +
-              random() * 6 - (lateClose && score[side] < score[other] ? 3 : 0),
+              random() * 6 -
+              (lateClose && score[side] < score[other] ? 3 : 0),
           );
       left = Math.max(0, left - duration);
       const i = pick(
@@ -385,6 +448,7 @@ export function simulate(
             Math.max(
               0,
               (p.fga + 0.44 * p.fta) *
+                clamp(1 + p.offensiveImpact * 0.045, 0.78, 1.25) *
                 (rotation[side][j] / 36) *
                 (activePlans[side] === "inside" && j === 4 ? 1.6 : 1),
             ),
@@ -463,7 +527,11 @@ export function simulate(
           0.24,
         )
       ) {
-        const fouler = pick(def.map((_, j) => Math.max(1, rotation[other][j] - boxes[other][j].pf * 5)));
+        const fouler = pick(
+          def.map((_, j) =>
+            Math.max(1, rotation[other][j] - boxes[other][j].pf * 5),
+          ),
+        );
         secondaryIndex = fouler;
         secondarySide = other;
         boxes[other][fouler].pf++;
@@ -505,10 +573,27 @@ export function simulate(
         const crowding = three
           ? 0
           : clamp((spacing[side] - 3) * 0.012, -0.036, 0.024);
-        const fatiguePenalty = Math.max(0, rotation[side][i] - 34) * Math.max(0, period - 1) * 0.0012 + (activePlans[side] === "fast" ? Math.max(0, period - 2) * 0.004 : 0);
+        const fatiguePenalty =
+          Math.max(0, rotation[side][i] - 34) *
+            Math.max(0, period - 1) *
+            0.0012 +
+          (activePlans[side] === "fast" ? Math.max(0, period - 2) * 0.004 : 0);
+        const matchupAdjustment = clamp(
+          (teamImpact[side] - teamImpact[other]) * 0.018,
+          -0.09,
+          0.09,
+        );
         const made =
           !blocked &&
-          random() < clamp((three ? p.p3 : p.p2) + crowding - fatiguePenalty, 0.15, 0.8);
+          random() <
+            clamp(
+              (three ? p.p3 : p.p2) +
+                crowding +
+                matchupAdjustment -
+                fatiguePenalty,
+              0.12,
+              0.82,
+            );
         event = blocked ? "block" : made ? "basket" : "miss";
         if (made) {
           box.fgm++;
@@ -540,7 +625,12 @@ export function simulate(
         }
       }
       const activeRun = run as { side: number; points: number } | null;
-      if (activeRun && activeRun.side === side && activeRun.points >= 8 && timeouts[other] > 0) {
+      if (
+        activeRun &&
+        activeRun.side === side &&
+        activeRun.points >= 8 &&
+        timeouts[other] > 0
+      ) {
         timeouts[other]--;
         text += ` Lineup ${other === 0 ? "A" : "B"} calls timeout to stop the ${activeRun.points}–0 run.`;
         run = null;
@@ -560,15 +650,18 @@ export function simulate(
           if (primarySide === courtSide) required.push(primaryIndex);
           if (secondaryIndex !== undefined && secondarySide === courtSide)
             required.push(secondaryIndex);
-          return onCourt(courtSide, required).map((index) => teams[courtSide][index].id);
+          return onCourt(courtSide, required).map(
+            (index) => teams[courtSide][index].id,
+          );
         }),
         participants: {
           primaryId: teams[primarySide][primaryIndex].id,
           primarySide,
           offensiveId: team[offensiveIndex].id,
-          secondaryId: secondaryIndex === undefined
-            ? undefined
-            : teams[secondarySide][secondaryIndex]?.id,
+          secondaryId:
+            secondaryIndex === undefined
+              ? undefined
+              : teams[secondarySide][secondaryIndex]?.id,
         },
       });
       if (keep) {
@@ -592,7 +685,7 @@ export function simulate(
     `Possessions: A ${possessions[0]} — B ${possessions[1]}. These are observed differences, not proof of a single cause of victory.`,
   ];
   return {
-    model: "QNBA experimental v3",
+    model: "FIVEOUT matchup model v4",
     score,
     boxes,
     plays,
@@ -603,7 +696,9 @@ export function simulate(
     rotation,
     possessions,
     timeouts,
-    fatigue: rotation.map((team) => team.map((minutes) => Math.round(Math.max(0, minutes - 32) * 2.5))),
+    fatigue: rotation.map((team) =>
+      team.map((minutes) => Math.round(Math.max(0, minutes - 32) * 2.5)),
+    ),
     summary,
     calibration: NBA_CALIBRATION,
   };
