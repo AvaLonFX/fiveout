@@ -17,6 +17,7 @@ export default function FullCourtHome() {
           <p className="mt-7 max-w-xl text-lg leading-8 text-slate-300">Build two eight-player rotations, set the tactics, and watch a possession-by-possession simulation decide the matchup.</p>
           <div className="mt-9 flex flex-wrap gap-3">
             <Link href="/full-court/play" className="rounded-xl bg-cyan-300 px-6 py-3 font-black text-[#06101a] shadow-[0_0_40px_rgba(34,211,238,.2)] hover:bg-cyan-200">Build a matchup →</Link>
+            <Link href="/full-court/daily" className="rounded-xl bg-violet-400 px-6 py-3 font-black text-[#080811] hover:bg-violet-300">Today’s challenge</Link>
             <a href="#how" className="rounded-xl border border-white/15 px-6 py-3 font-bold hover:bg-white/5">How it works</a>
           </div>
           <div className="mt-10 grid max-w-xl grid-cols-3 gap-3 text-xs text-slate-400 sm:gap-8 sm:text-sm"><span><b className="block text-base text-white sm:text-xl">Multiple eras</b>Current + All-Time</span><span><b className="block text-base text-white sm:text-xl">BO1–BO7</b>Series formats</span><span><b className="block text-base text-white sm:text-xl">Live</b>Friend draft</span></div>

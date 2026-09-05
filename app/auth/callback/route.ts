@@ -26,6 +26,7 @@ export async function GET(request: Request) {
       db.from("match_results").update({ owner_key: owner }).eq("owner_key", guest),
       db.from("match_challenges").update({ creator_key: owner }).eq("creator_key", guest),
       db.from("match_challenges").update({ opponent_key: owner }).eq("opponent_key", guest),
+      db.rpc("transfer_fiveout_daily_attempts", { p_guest: guest, p_owner: owner }),
     ]);
     const transferError = transfers.find(result => result.error)?.error;
     if (transferError) console.error("Guest history transfer failed", transferError);

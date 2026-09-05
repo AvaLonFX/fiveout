@@ -18,6 +18,7 @@ export default function FullCourtLayout({ children }: { children: React.ReactNod
         <nav aria-label="Primary navigation" className="flex items-center gap-1 text-xs font-semibold sm:gap-2 sm:text-sm">
           <Link href="/full-court" className="rounded-xl px-2.5 py-2 text-slate-300 hover:bg-white/5 sm:px-4">Home</Link>
           <Link href="/full-court/history" className="rounded-xl px-2.5 py-2 text-slate-300 hover:bg-white/5 sm:px-4">History</Link>
+          <Link href="/full-court/daily" className="rounded-xl px-2.5 py-2 text-violet-300 hover:bg-violet-400/10 sm:px-4">Daily</Link>
           <Link href="/full-court/play" className="rounded-xl bg-cyan-300 px-3 py-2 text-[#06101a] shadow-[0_0_24px_rgba(103,232,249,.15)] hover:bg-cyan-200 sm:px-4"><span className="sm:hidden">Play</span><span className="hidden sm:inline">Enter the lab</span></Link>
           <FiveOutAccountNav />
         </nav>
