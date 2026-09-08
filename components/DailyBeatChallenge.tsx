@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import PlayerImage from "@/components/PlayerImage";
 import MatchSimulation from "@/components/MatchSimulation";
@@ -10,21 +10,36 @@ import type { Tactic } from "@/lib/match-simulation";
 
 type Player = { id: number; name: string; team: string; position: string; pts: number; reb: number; ast: number; cost: number; score: number; games: number };
 type Attempt = { attempt_number: number; score_for: number; score_against: number; won: boolean; margin: number };
-type State = { day: string; budget: number; maxAttempts: number; attempts: Attempt[]; streak: number; signedIn: boolean; community: { participants: number; beatRate: number | null }; opponent: Array<{ id: number; name: string; position: string }>; players: Player[]; result?: any };
+type BoardRow = { rank: number; name: string; value: number; score?: string; you: boolean };
+type State = { day: string; budget: number; maxAttempts: number; attempts: Attempt[]; streak: number; signedIn: boolean; community: { participants: number; beatRate: number | null }; opponent: Array<{ id: number; name: string; position: string }>; players: Player[]; leaderboards: { daily: BoardRow[]; streaks: BoardRow[] }; result?: any };
 const tactics: Array<[Tactic, string]> = [["balanced", "Balanced"], ["perimeter", "More threes"], ["inside", "Play through the center"], ["fast", "Push the pace"], ["pressure", "Defensive pressure"]];
+
+function Leaderboard({ title, subtitle, rows, format }: { title: string; subtitle: string; rows: BoardRow[]; format: (row: BoardRow) => React.ReactNode }) {
+  return <div className="rounded-2xl border border-white/10 bg-[#0a1020] p-5">
+    <h2 className="text-xl font-black">{title}</h2>
+    <p className="mt-1 text-sm text-slate-500">{subtitle}</p>
+    {rows.length ? <ol className="mt-4 space-y-2">{rows.map(row => <li key={`${row.rank}-${row.name}`} className={`grid grid-cols-[2rem_1fr_auto] items-center gap-3 rounded-xl border p-3 ${row.you ? "border-cyan-300/30 bg-cyan-300/[.07]" : "border-white/10 bg-white/[.025]"}`}><span className="text-sm font-black text-slate-500">#{row.rank}</span><span className="truncate font-bold">{row.name}</span><span className="flex items-end gap-2 text-right">{format(row)}</span></li>)}</ol> : <p className="mt-5 rounded-xl border border-dashed border-white/10 p-5 text-center text-sm text-slate-500">No scores yet. Set the first mark.</p>}
+  </div>;
+}
 
 export default function DailyBeatChallenge() {
   const [data, setData] = useState<State | null>(null), [ids, setIds] = useState<number[]>([]), [tactic, setTactic] = useState<Tactic>("balanced"), [query, setQuery] = useState(""), [position, setPosition] = useState("all"), [busy, setBusy] = useState(true), [error, setError] = useState("");
-  useEffect(() => { fetch("/api/daily-beat", { cache: "no-store" }).then(async response => { const body = await response.json(); if (!response.ok) throw Error(body.error); setData(body); trackEvent("daily_challenge_viewed"); }).catch(event => setError(event.message)).finally(() => setBusy(false)); }, []);
+  const [shareStatus, setShareStatus] = useState("");
+  const startedTracked = useRef(false), readyTracked = useRef(false);
+  useEffect(() => { fetch("/api/daily-beat", { cache: "no-store" }).then(async response => { const body = await response.json(); if (!response.ok) throw Error(body.error); setData(body); trackEvent("daily_challenge_viewed", { played_today: body.attempts.length ? "yes" : "no", streak: body.streak }); if (body.streak >= 2) trackEvent("daily_returning_user", { streak: body.streak }); }).catch(event => setError(event.message)).finally(() => setBusy(false)); }, []);
   const selected = useMemo(() => ids.map(id => data?.players.find(player => player.id === id)).filter(Boolean) as Player[], [data, ids]);
   const spent = selected.reduce((sum, player) => sum + player.cost, 0);
   const legal = ids.length === 8 && spent <= (data?.budget || 0) && !!assignLineup(selected.slice(0, 5));
   const visible = (data?.players || []).filter(player => position === "all" || roles(player.position).includes(position as "G" | "F" | "C")).filter(player => `${player.name} ${player.team}`.toLowerCase().includes(query.toLowerCase()));
 
   function toggle(id: number) {
+    if (!startedTracked.current && !ids.includes(id)) { startedTracked.current = true; trackEvent("daily_lineup_started"); }
     if (ids.includes(id)) setIds(current => current.filter(value => value !== id));
     else if (ids.length < 8) setIds(current => [...current, id]);
   }
+  useEffect(() => {
+    if (legal && !readyTracked.current) { readyTracked.current = true; trackEvent("daily_lineup_ready", { budget_used: spent, tactic }); }
+  }, [legal, spent, tactic]);
   function move(index: number, direction: -1 | 1) {
     const target = index + direction; if (target < 0 || target >= ids.length) return;
     setIds(current => { const next = [...current]; [next[index], next[target]] = [next[target], next[index]]; return next; });
@@ -51,6 +66,75 @@ export default function DailyBeatChallenge() {
     } catch (event) { setError((event as Error).message); } finally { setBusy(false); }
   }
 
+  async function shareResult() {
+    if (!data?.attempts.length) return;
+    const best = [...data.attempts].sort((a, b) => b.margin - a.margin)[0];
+    const url = `${window.location.origin}/full-court/daily`;
+    const resultLine = best.won ? `Won by ${best.margin}` : best.margin === 0 ? "Draw" : `Lost by ${Math.abs(best.margin)}`;
+    const text = `FIVEOUT Beat This Team · ${data.day}\n${best.score_for}–${best.score_against} · ${resultLine}\n🔥 ${data.streak} day streak\n${url}`;
+    trackEvent("daily_share_clicked", { won: best.won ? "yes" : "no", margin: best.margin, streak: data.streak });
+    try {
+      const canvas = document.createElement("canvas");
+      canvas.width = 1200;
+      canvas.height = 630;
+      const context = canvas.getContext("2d");
+      if (!context) throw new Error("Canvas unavailable");
+      const background = context.createLinearGradient(0, 0, 1200, 630);
+      background.addColorStop(0, "#050915");
+      background.addColorStop(0.58, "#0a1020");
+      background.addColorStop(1, "#21184d");
+      context.fillStyle = background;
+      context.fillRect(0, 0, 1200, 630);
+      context.strokeStyle = "rgba(103,232,249,.35)";
+      context.lineWidth = 2;
+      context.strokeRect(42, 42, 1116, 546);
+      context.fillStyle = "#67e8f9";
+      context.font = "800 28px Arial";
+      context.fillText("FIVEOUT · BEAT THIS TEAM", 88, 112);
+      context.fillStyle = "#94a3b8";
+      context.font = "600 24px Arial";
+      context.fillText(data.day, 88, 155);
+      context.fillStyle = "#f8fafc";
+      context.font = "900 112px Arial";
+      context.fillText(`${best.score_for} : ${best.score_against}`, 88, 310);
+      context.fillStyle = best.won ? "#6ee7b7" : "#c4b5fd";
+      context.font = "800 42px Arial";
+      context.fillText(resultLine.toUpperCase(), 92, 382);
+      context.fillStyle = "#f8fafc";
+      context.font = "800 34px Arial";
+      context.fillText(`🔥 ${data.streak} DAY STREAK`, 92, 463);
+      context.fillStyle = "#94a3b8";
+      context.font = "600 25px Arial";
+      context.fillText("fiveout.vercel.app/full-court/daily", 92, 530);
+      const blob = await new Promise<Blob | null>(resolve => canvas.toBlob(resolve, "image/png"));
+      const file = blob ? new File([blob], `fiveout-daily-${data.day}.png`, { type: "image/png" }) : null;
+      if (file && navigator.share && navigator.canShare?.({ files: [file] })) {
+        await navigator.share({ files: [file], text, title: "FIVEOUT Daily Challenge" });
+        setShareStatus("Shared!");
+      } else {
+        await navigator.clipboard.writeText(text);
+        if (blob) {
+          const download = document.createElement("a");
+          download.href = URL.createObjectURL(blob);
+          download.download = file!.name;
+          download.click();
+          setTimeout(() => URL.revokeObjectURL(download.href), 1000);
+        }
+        setShareStatus("Result copied and share card saved.");
+      }
+      trackEvent("daily_share_completed", { method: file && navigator.canShare?.({ files: [file] }) ? "native" : "copy_download" });
+    } catch (event) {
+      if ((event as Error).name === "AbortError") return;
+      try {
+        await navigator.clipboard.writeText(text);
+        setShareStatus("Result copied.");
+        trackEvent("daily_share_completed", { method: "copy" });
+      } catch {
+        setShareStatus("Could not share this result.");
+      }
+    }
+  }
+
   if (busy && !data) return <div className="rounded-3xl border border-white/10 bg-white/[.025] p-10 text-center"><p className="text-cyan-300">Preparing today’s challenge…</p></div>;
   if (!data) return <div className="rounded-3xl border border-red-400/20 p-6"><p role="alert" className="text-red-200">{error || "Unable to load today’s challenge."}</p><button onClick={() => location.reload()} className="mt-4 rounded-xl border px-4 py-2">Try again</button></div>;
   const best = data.attempts.length ? [...data.attempts].sort((a,b) => b.margin-a.margin)[0] : null;
@@ -60,6 +144,14 @@ export default function DailyBeatChallenge() {
       <div className="p-6 sm:p-8"><p className="text-xs font-black uppercase tracking-widest text-slate-500">Today’s opponent</p><div className="mt-3 grid gap-2 sm:grid-cols-4">{data.opponent.map((player, index) => <div key={player.id} className="flex items-center gap-3 rounded-xl border border-white/10 bg-white/[.035] p-3"><PlayerImage playerId={player.id} alt={player.name} className="h-11 w-11 object-contain"/><div><p className="text-sm font-bold">{player.name}</p><p className="text-xs text-slate-500">{index < 5 ? "Starter" : "Bench"} · {player.position}</p></div></div>)}</div></div>
     </section>
     {!!data.attempts.length && <section className="grid gap-3 sm:grid-cols-3">{data.attempts.map(attempt => <div key={attempt.attempt_number} className={`rounded-2xl border p-4 ${attempt.won ? "border-emerald-400/30 bg-emerald-400/[.06]" : "border-white/10 bg-white/[.025]"}`}><p className="text-xs uppercase text-slate-500">Attempt {attempt.attempt_number}</p><p className="mt-1 text-2xl font-black">{attempt.score_for}–{attempt.score_against}</p><p className={attempt.won ? "text-emerald-300" : "text-slate-400"}>{attempt.margin >= 10 ? "Dominated" : attempt.won ? "Beat them" : attempt.margin >= -10 ? "Survived" : "Defeated"}</p></div>)}</section>}
+    <section className="grid gap-4 lg:grid-cols-2">
+      <Leaderboard title="Today’s best margins" subtitle="Each coach’s best run today" rows={data.leaderboards.daily} format={row => <><b>{row.value > 0 ? `+${row.value}` : row.value}</b><span className="text-xs text-slate-500">{row.score}</span></>} />
+      <Leaderboard title="Longest active streaks" subtitle="Consecutive daily appearances" rows={data.leaderboards.streaks} format={row => <b>{row.value} {row.value === 1 ? "day" : "days"}</b>} />
+    </section>
+    {!!data.attempts.length && <section className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-violet-400/20 bg-violet-400/[.055] p-5">
+      <div><p className="font-black">Share your best run</p><p className="mt-1 text-sm text-slate-400">Creates a FIVEOUT result card and includes the Daily Challenge link.</p></div>
+      <div className="flex flex-wrap items-center gap-3"><button onClick={() => void shareResult()} className="rounded-xl bg-violet-400 px-5 py-3 font-black text-[#080811] hover:bg-violet-300">Share result</button>{shareStatus && <span role="status" className="text-sm text-emerald-300">{shareStatus}</span>}</div>
+    </section>}
     {data.attempts.length < data.maxAttempts && <><section className="rounded-2xl border border-white/10 bg-[#0a1020] p-5"><div className="flex flex-wrap items-center justify-between gap-4"><div><p className="text-xs font-black uppercase tracking-widest text-cyan-300">Your rotation · {ids.length}/8</p><p className={`mt-1 text-xl font-black ${spent > data.budget ? "text-red-300" : ""}`}>{spent}/{data.budget} points</p></div><div className="flex gap-2"><button onClick={smartBuild} className="rounded-xl border border-cyan-300/25 px-4 py-2 text-sm font-bold text-cyan-200">Smart build</button><select value={tactic} onChange={event => setTactic(event.target.value as Tactic)} className="rounded-xl border border-white/15 bg-[#060914] px-3 py-2 text-sm">{tactics.map(([value,label]) => <option key={value} value={value}>{label}</option>)}</select></div></div>
       {!!selected.length && <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">{selected.map((player,index) => <div key={player.id} className="rounded-xl border border-white/10 p-3"><div className="flex justify-between gap-2"><div><p className="text-sm font-bold">{index+1}. {player.name}</p><p className="text-xs text-slate-500">{index<5?"Starter":"Bench"} · {player.position} · {player.cost} pts</p></div><button onClick={() => toggle(player.id)} className="text-xs text-red-300">Remove</button></div><div className="mt-2 flex gap-2"><button aria-label={`Move ${player.name} up`} onClick={() => move(index,-1)} disabled={index===0} className="text-xs disabled:opacity-20">←</button><button aria-label={`Move ${player.name} down`} onClick={() => move(index,1)} disabled={index===ids.length-1} className="text-xs disabled:opacity-20">→</button></div></div>)}</div>}
       <div className="mt-4 flex flex-wrap items-center gap-3"><button disabled={!legal||busy} onClick={() => void play()} className="rounded-xl bg-cyan-300 px-5 py-3 font-black text-[#06101a] disabled:opacity-40">{busy?"Simulating…":`Play attempt ${data.attempts.length+1}`}</button><span className={`text-sm ${legal?"text-emerald-300":"text-amber-300"}`}>{legal?"Rotation ready":ids.length!==8?"Choose exactly eight players":spent>data.budget?"Over budget":"First five need 2G · 2F · 1C"}</span></div>{error&&<p role="alert" className="mt-3 text-sm text-red-300">{error}</p>}</section>

@@ -1,4 +1,5 @@
 import Link from "next/link";
+import DailyHomeCard from "@/components/DailyHomeCard";
 
 const features = [
   ["01", "Build your eight", "Choose current stars or legends and shape a legal rotation."],
@@ -46,6 +47,7 @@ export default function FullCourtHome() {
         </div>
       </div>
     </section>
+    <DailyHomeCard />
     <section id="how" className="mx-auto max-w-7xl px-5 py-20"><p className="text-xs font-black uppercase tracking-[.3em] text-violet-300">How it works</p><h2 className="mt-3 text-3xl font-black">From zero to tip-off in minutes.</h2><div className="mt-10 grid gap-4 md:grid-cols-3">{features.map(([number,title,copy])=><article key={number} className="rounded-2xl border border-white/10 bg-white/[.035] p-6"><span className="text-sm font-black text-cyan-300">{number}</span><h3 className="mt-8 text-xl font-black">{title}</h3><p className="mt-3 leading-7 text-slate-400">{copy}</p></article>)}</div><div className="mt-10 flex flex-col gap-5 rounded-2xl border border-cyan-300/15 bg-cyan-300/[.045] p-6 sm:flex-row sm:items-center sm:justify-between"><div><p className="font-black">A statistical basketball sandbox</p><p className="mt-1 max-w-2xl text-sm leading-6 text-slate-400">Player production, role, efficiency, playmaking, defense, rotation minutes and tactics shape each result. Every simulation includes game-to-game variance, so favorites can still lose.</p></div><Link href="/full-court/play" className="shrink-0 rounded-xl bg-cyan-300 px-5 py-3 text-center font-black text-[#06101a] hover:bg-cyan-200">Start building</Link></div></section>
   </main>;
 }

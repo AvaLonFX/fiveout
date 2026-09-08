@@ -27,47 +27,96 @@ function makeOpponent(players: Awaited<ReturnType<typeof dailyPool>>["players"],
   if (starters.length !== 5) throw new Error("Unable to create today's opponent.");
   const bench = candidates.filter(player => !starters.some(starter => starter.id === player.id)).slice(0, 3);
   const ids = [...starters, ...bench].map(player => player.id);
-  return { ids, team: ids.map(id => profiles.get(id)!).filter(Boolean) };
+  return { team: ids.map(id => profiles.get(id)!).filter(Boolean) };
 }
 
-function calculateStreak(days: string[]) {
+function streakFromDays(days: string[], today: string, allowYesterday = true) {
   const completed = new Set(days);
-  const cursor = new Date(`${new Date().toISOString().slice(0, 10)}T00:00:00Z`);
-  if (!completed.has(cursor.toISOString().slice(0, 10))) cursor.setUTCDate(cursor.getUTCDate() - 1);
+  const cursor = new Date(`${today}T00:00:00Z`);
+  if (allowYesterday && !completed.has(today)) cursor.setUTCDate(cursor.getUTCDate() - 1);
   let streak = 0;
-  while (completed.has(cursor.toISOString().slice(0, 10))) { streak++; cursor.setUTCDate(cursor.getUTCDate() - 1); }
+  while (completed.has(cursor.toISOString().slice(0, 10))) {
+    streak++;
+    cursor.setUTCDate(cursor.getUTCDate() - 1);
+  }
   return streak;
 }
 
-async function state(owner: string, day: string, opponent: ReturnType<typeof makeOpponent>, pool: Awaited<ReturnType<typeof dailyPool>>) {
+type BoardEntry = { owner: string; value: number; score?: string };
+
+async function leaderboards(owner: string, day: string) {
   const db = admin();
-  const [{ data: attempts, error }, { data: history, error: historyError }, { data: todayRows, error: todayError }] = await Promise.all([
+  const [{ data: todayRows, error: todayError }, { data: recentRows, error: recentError }] = await Promise.all([
+    db.from("daily_beat_attempts").select("owner_key,margin,score_for,score_against").eq("day", day).order("margin", { ascending: false }).limit(5000),
+    db.from("daily_beat_attempts").select("owner_key,day").order("day", { ascending: false }).limit(10000),
+  ]);
+  if (todayError || recentError) throw todayError || recentError;
+
+  const bestByOwner = new Map<string, BoardEntry>();
+  for (const row of todayRows || []) {
+    if (!bestByOwner.has(row.owner_key)) bestByOwner.set(row.owner_key, { owner: row.owner_key, value: row.margin, score: `${row.score_for}–${row.score_against}` });
+  }
+  const daysByOwner = new Map<string, Set<string>>();
+  for (const row of recentRows || []) {
+    if (!daysByOwner.has(row.owner_key)) daysByOwner.set(row.owner_key, new Set());
+    daysByOwner.get(row.owner_key)!.add(row.day);
+  }
+  const streaks = Array.from(daysByOwner).map(([key, days]) => ({ owner: key, value: streakFromDays(Array.from(days), day) })).filter(entry => entry.value > 0).sort((a, b) => b.value - a.value).slice(0, 10);
+  const daily = Array.from(bestByOwner.values()).sort((a, b) => b.value - a.value).slice(0, 10);
+  const owners = Array.from(new Set([...daily, ...streaks].map(entry => entry.owner).filter(key => key.startsWith("user:"))));
+  const { data: profiles, error: profileError } = owners.length
+    ? await db.from("match_profiles").select("owner_key,display_name,is_public").in("owner_key", owners)
+    : { data: [], error: null };
+  if (profileError) throw profileError;
+  const names = new Map((profiles || []).filter(profile => profile.is_public).map(profile => [profile.owner_key, profile.display_name]));
+  const present = (entries: BoardEntry[]) => entries.map((entry, index) => ({
+    rank: index + 1,
+    name: entry.owner === owner ? "You" : names.get(entry.owner) || "Anonymous coach",
+    value: entry.value,
+    score: entry.score,
+    you: entry.owner === owner,
+  }));
+  return { daily: present(daily), streaks: present(streaks) };
+}
+
+async function state(owner: string, day: string, opponent: ReturnType<typeof makeOpponent>, pool: Awaited<ReturnType<typeof dailyPool>>, summary = false) {
+  const db = admin();
+  const [{ data: attempts, error }, { data: history, error: historyError }, { data: todayRows, error: todayError }, boards] = await Promise.all([
     db.from("daily_beat_attempts").select("attempt_number,score_for,score_against,won,margin,player_ids,tactic,created_at").eq("owner_key", owner).eq("day", day).order("attempt_number"),
     db.from("daily_beat_attempts").select("day").eq("owner_key", owner).order("day", { ascending: false }).limit(400),
     db.from("daily_beat_attempts").select("owner_key,won").eq("day", day).limit(5000),
+    leaderboards(owner, day),
   ]);
   if (error || historyError || todayError) throw error || historyError || todayError;
   const participants = new Map<string, boolean>();
   for (const row of todayRows || []) participants.set(row.owner_key, (participants.get(row.owner_key) || false) || row.won);
   const winners = Array.from(participants.values()).filter(Boolean).length;
-  const publicPlayers = pool.players.map(({ id, name, team, position, pts, reb, ast, cost, score, games }) => ({ id, name, team, position, pts, reb, ast, cost, score, games }));
-  return {
-    day, budget: BUDGET, maxAttempts: ATTEMPTS, attempts: attempts || [],
-    streak: calculateStreak((history || []).map(row => row.day)),
+  const base = {
+    day,
+    budget: BUDGET,
+    maxAttempts: ATTEMPTS,
+    attempts: attempts || [],
+    streak: streakFromDays((history || []).map(row => row.day), day),
     community: { participants: participants.size, beatRate: participants.size ? Math.round(1000 * winners / participants.size) / 10 : null },
     opponent: opponent.team.map(player => ({ id: player.id, name: player.name, position: player.position })),
-    players: publicPlayers,
+    leaderboards: boards,
   };
+  if (summary) return base;
+  const players = pool.players.map(({ id, name, team, position, pts, reb, ast, cost, score, games }) => ({ id, name, team, position, pts, reb, ast, cost, score, games }));
+  return { ...base, players };
 }
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   try {
     const { owner, signedIn } = await identity();
     const day = new Date().toISOString().slice(0, 10);
     const pool = await dailyPool();
     const opponent = makeOpponent(pool.players, pool.profiles, day);
-    return json({ ...(await state(owner, day, opponent, pool)), signedIn });
-  } catch (error) { console.error("Daily challenge load failed", error); return json({ error: "Unable to load today's challenge." }, 503); }
+    return json({ ...(await state(owner, day, opponent, pool, req.nextUrl.searchParams.get("summary") === "1")), signedIn });
+  } catch (error) {
+    console.error("Daily challenge load failed", error);
+    return json({ error: "Unable to load today's challenge." }, 503);
+  }
 }
 
 export async function POST(req: NextRequest) {
@@ -97,5 +146,8 @@ export async function POST(req: NextRequest) {
     if (error?.code === "23505") return json({ error: "That attempt was already submitted. Reload the challenge." }, 409);
     if (error) throw error;
     return json({ result: { ...result, season: pool.dataset.season, syncedAt: pool.dataset.syncedAt, era: "current" }, ...(await state(owner, day, opponent, pool)), signedIn });
-  } catch (error) { console.error("Daily challenge attempt failed", error); return json({ error: "Unable to run this daily attempt." }, 503); }
+  } catch (error) {
+    console.error("Daily challenge attempt failed", error);
+    return json({ error: "Unable to run this daily attempt." }, 503);
+  }
 }
