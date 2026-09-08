@@ -1,10 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { admin, identity } from "@/lib/guesser-server";
+import { bestDailyStreak, dailyBadges, dailyStreak } from "@/lib/daily-progress";
 
 const json = (value: unknown, status = 200) => NextResponse.json(value, { status, headers: { "Cache-Control": "private, no-store", Vary: "Cookie" } });
 async function profileStats(ownerKey: string) {
-  const { data, error } = await admin().from("match_results").select("payload,source").eq("owner_key", ownerKey).order("created_at", { ascending: false }).limit(500);
-  if (error) throw error;
+  const [{ data, error }, { data: dailyRows, error: dailyError }] = await Promise.all([
+    admin().from("match_results").select("payload,source").eq("owner_key", ownerKey).order("created_at", { ascending: false }).limit(500),
+    admin().from("daily_beat_attempts").select("day,score_for,score_against,won,margin,created_at").eq("owner_key", ownerKey).order("day", { ascending: false }).order("created_at", { ascending: true }).limit(1200),
+  ]);
+  if (error || dailyError) throw error || dailyError;
   let wins = 0, losses = 0, games = 0, pointsFor = 0, pointsAgainst = 0;
   for (const row of data || []) {
     if (row.source !== "challenge" || !row.payload?.series?.games?.length) continue;
@@ -13,7 +17,20 @@ async function profileStats(ownerKey: string) {
     for (const game of row.payload.series.games) { pointsFor += game.score[side]; pointsAgainst += game.score[1 - side]; }
     if (row.payload.series.winner === side) wins++; else losses++;
   }
-  return { wins, losses, seriesPlayed: wins + losses, games, savedMatches: (data || []).length, pointsFor, pointsAgainst, winRate: wins + losses ? Math.round(1000 * wins / (wins + losses)) / 10 : 0 };
+  const days = Array.from(new Set((dailyRows || []).map(row => row.day)));
+  const today = new Date().toISOString().slice(0, 10);
+  const bestByDay = new Map<string, (typeof dailyRows extends Array<infer T> | null ? T : never)>();
+  for (const row of dailyRows || []) {
+    const previous = bestByDay.get(row.day);
+    if (!previous || row.margin > previous.margin || (row.margin === previous.margin && row.created_at < previous.created_at)) bestByDay.set(row.day, row);
+  }
+  const bestStreak = bestDailyStreak(days);
+  const dailyHistory = Array.from(bestByDay.values()).sort((a, b) => b.day.localeCompare(a.day)).slice(0, 14).map(row => ({ day: row.day, score: `${row.score_for}–${row.score_against}`, margin: row.margin, won: row.won }));
+  return {
+    wins, losses, seriesPlayed: wins + losses, games, savedMatches: (data || []).length, pointsFor, pointsAgainst,
+    winRate: wins + losses ? Math.round(1000 * wins / (wins + losses)) / 10 : 0,
+    daily: { daysPlayed: days.length, attempts: (dailyRows || []).length, wins: (dailyRows || []).filter(row => row.won).length, currentStreak: dailyStreak(days, today), bestStreak, bestMargin: (dailyRows || []).length ? Math.max(...(dailyRows || []).map(row => row.margin)) : null, badges: dailyBadges(bestStreak), history: dailyHistory },
+  };
 }
 export async function GET(req: NextRequest) {
   try {

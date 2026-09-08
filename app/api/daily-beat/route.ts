@@ -6,6 +6,7 @@ import { simulationPlayers } from "@/lib/simulation-data";
 import { assignLineup, pickLegalFive } from "@/lib/lineup-roles";
 import { defaultRotation, simulate, tactics, type SimPlayer, type Tactic } from "@/lib/match-simulation";
 import { seededRandom } from "@/lib/match-security";
+import { dailyStreak } from "@/lib/daily-progress";
 
 export const runtime = "nodejs";
 const BUDGET = 155;
@@ -66,27 +67,18 @@ function makeOpponent(players: Awaited<ReturnType<typeof dailyPool>>["players"],
   return { team: best.map(player => profiles.get(player.id)!).filter(Boolean), cost, difficulty: difficultyFor(cost) };
 }
 
-function streakFromDays(days: string[], today: string, allowYesterday = true) {
-  const completed = new Set(days);
-  const cursor = new Date(`${today}T00:00:00Z`);
-  if (allowYesterday && !completed.has(today)) cursor.setUTCDate(cursor.getUTCDate() - 1);
-  let streak = 0;
-  while (completed.has(cursor.toISOString().slice(0, 10))) {
-    streak++;
-    cursor.setUTCDate(cursor.getUTCDate() - 1);
-  }
-  return streak;
-}
-
 type BoardEntry = { owner: string; value: number; score?: string; spent: number; createdAt: string };
 
 async function leaderboards(owner: string, day: string, costs: Map<number, number>) {
   const db = admin();
-  const [{ data: todayRows, error: todayError }, { data: recentRows, error: recentError }] = await Promise.all([
+  const yesterday = new Date(`${day}T00:00:00Z`); yesterday.setUTCDate(yesterday.getUTCDate() - 1);
+  const yesterdayDay = yesterday.toISOString().slice(0, 10);
+  const [{ data: todayRows, error: todayError }, { data: recentRows, error: recentError }, { data: yesterdayRows, error: yesterdayError }] = await Promise.all([
     db.from("daily_beat_attempts").select("owner_key,margin,score_for,score_against,player_ids,created_at").eq("day", day).limit(5000),
     db.from("daily_beat_attempts").select("owner_key,day").order("day", { ascending: false }).limit(10000),
+    db.from("daily_beat_attempts").select("owner_key,margin,score_for,score_against,player_ids,created_at").eq("day", yesterdayDay).limit(5000),
   ]);
-  if (todayError || recentError) throw todayError || recentError;
+  if (todayError || recentError || yesterdayError) throw todayError || recentError || yesterdayError;
 
   const bestByOwner = new Map<string, BoardEntry>();
   for (const row of todayRows || []) {
@@ -99,23 +91,36 @@ async function leaderboards(owner: string, day: string, costs: Map<number, numbe
     if (!daysByOwner.has(row.owner_key)) daysByOwner.set(row.owner_key, new Set());
     daysByOwner.get(row.owner_key)!.add(row.day);
   }
-  const streaks: BoardEntry[] = Array.from(daysByOwner).map(([key, days]) => ({ owner: key, value: streakFromDays(Array.from(days), day), spent: 0, createdAt: "" })).filter(entry => entry.value > 0).sort((a, b) => b.value - a.value).slice(0, 10);
-  const daily = Array.from(bestByOwner.values()).sort((a, b) => b.value - a.value || a.spent - b.spent || a.createdAt.localeCompare(b.createdAt)).slice(0, 10);
-  const owners = Array.from(new Set([...daily, ...streaks].map(entry => entry.owner).filter(key => key.startsWith("user:"))));
+  const streaks: BoardEntry[] = Array.from(daysByOwner).map(([key, days]) => ({ owner: key, value: dailyStreak(Array.from(days), day), spent: 0, createdAt: "" })).filter(entry => entry.value > 0).sort((a, b) => b.value - a.value);
+  const allDaily = Array.from(bestByOwner.values()).sort((a, b) => b.value - a.value || a.spent - b.spent || a.createdAt.localeCompare(b.createdAt));
+  const allYesterday = new Map<string, BoardEntry>();
+  for (const row of yesterdayRows || []) {
+    const entry = { owner: row.owner_key, value: row.margin, score: `${row.score_for}–${row.score_against}`, spent: (row.player_ids || []).reduce((sum: number, id: number) => sum + (costs.get(id) || 0), 0), createdAt: row.created_at };
+    const previous = allYesterday.get(row.owner_key);
+    if (!previous || entry.value > previous.value || (entry.value === previous.value && (entry.spent < previous.spent || (entry.spent === previous.spent && entry.createdAt < previous.createdAt)))) allYesterday.set(row.owner_key, entry);
+  }
+  const yesterdayWinner = Array.from(allYesterday.values()).sort((a, b) => b.value - a.value || a.spent - b.spent || a.createdAt.localeCompare(b.createdAt))[0];
+  const visibleDaily = allDaily.slice(0, 10);
+  const ownDaily = allDaily.findIndex(entry => entry.owner === owner);
+  if (ownDaily >= 10) visibleDaily.push(allDaily[ownDaily]);
+  const visibleStreaks = streaks.slice(0, 10);
+  const ownStreak = streaks.findIndex(entry => entry.owner === owner);
+  if (ownStreak >= 10) visibleStreaks.push(streaks[ownStreak]);
+  const owners = Array.from(new Set([...visibleDaily, ...visibleStreaks, ...(yesterdayWinner ? [yesterdayWinner] : [])].map(entry => entry.owner).filter(key => key.startsWith("user:"))));
   const { data: profiles, error: profileError } = owners.length
     ? await db.from("match_profiles").select("owner_key,display_name,is_public").in("owner_key", owners)
     : { data: [], error: null };
   if (profileError) throw profileError;
-  const names = new Map((profiles || []).filter(profile => profile.is_public).map(profile => [profile.owner_key, profile.display_name]));
-  const present = (entries: BoardEntry[]) => entries.map((entry, index) => ({
-    rank: index + 1,
-    name: entry.owner === owner ? "You" : names.get(entry.owner) || "Anonymous coach",
+  const names = new Map((profiles || []).filter(profile => profile.is_public || profile.owner_key === owner).map(profile => [profile.owner_key, profile.display_name]));
+  const present = (entries: BoardEntry[], complete: BoardEntry[]) => entries.map(entry => ({
+    rank: complete.findIndex(item => item.owner === entry.owner) + 1,
+    name: names.get(entry.owner) || "Anonymous coach",
     value: entry.value,
     score: entry.score,
     spent: entry.spent || undefined,
     you: entry.owner === owner,
   }));
-  return { daily: present(daily), streaks: present(streaks) };
+  return { daily: present(visibleDaily, allDaily), streaks: present(visibleStreaks, streaks), yesterdayWinner: yesterdayWinner ? present([yesterdayWinner], [yesterdayWinner])[0] : null };
 }
 
 async function state(owner: string, day: string, opponent: ReturnType<typeof makeOpponent>, pool: Awaited<ReturnType<typeof dailyPool>>, summary = false) {
@@ -136,7 +141,7 @@ async function state(owner: string, day: string, opponent: ReturnType<typeof mak
     budget: BUDGET,
     maxAttempts: ATTEMPTS,
     attempts: (attempts || []).map(attempt => ({ ...attempt, spent: (attempt.player_ids || []).reduce((sum: number, id: number) => sum + (costs.get(id) || 0), 0) })),
-    streak: streakFromDays((history || []).map(row => row.day), day),
+    streak: dailyStreak((history || []).map(row => row.day), day),
     community: { participants: participants.size, beatRate: participants.size ? Math.round(1000 * winners / participants.size) / 10 : null },
     opponent: opponent.team.map(player => ({ id: player.id, name: player.name, position: player.position })),
     opponentCost: opponent.cost,
