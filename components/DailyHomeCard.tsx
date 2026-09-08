@@ -6,6 +6,9 @@ import PlayerImage from "@/components/PlayerImage";
 import { trackEvent } from "@/lib/gtag";
 
 type Summary = {
+  budget: number;
+  opponentCost: number;
+  difficulty: string;
   maxAttempts: number;
   attempts: Array<{ won: boolean }>;
   streak: number;
@@ -40,12 +43,13 @@ export default function DailyHomeCard() {
           <div>
             <p className="text-xs font-black uppercase tracking-[.28em] text-violet-300">Today · Beat this team</p>
             <h2 className="mt-3 text-3xl font-black">{won ? "You beat today’s team." : left ? "Three tries. One shared target." : "Today’s run is complete."}</h2>
-            <p className="mt-3 max-w-2xl leading-7 text-slate-400">Build under the 140-point cap and compare your best margin with every coach playing today.</p>
+            <p className="mt-3 max-w-2xl leading-7 text-slate-400">Build under the {data.budget}-point cap and compare your best margin with every coach playing today.</p>
             <div className="mt-5 flex flex-wrap gap-5 text-sm text-slate-400">
               <span><b className="block text-xl text-white">{left}</b>tries left</span>
               <span><b className="block text-xl text-white">{data.streak}</b>day streak</span>
               <span><b className="block text-xl text-white">{data.community.beatRate == null ? "—" : `${data.community.beatRate}%`}</b>beat rate</span>
               <span><b className="block text-xl text-white">{data.community.participants}</b>coaches today</span>
+              <span><b className="block text-xl text-white">{data.opponentCost}</b>{data.difficulty} opponent</span>
             </div>
           </div>
           <div className="flex flex-col items-start gap-4 lg:items-end">

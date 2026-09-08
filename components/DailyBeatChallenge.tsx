@@ -4,14 +4,14 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import PlayerImage from "@/components/PlayerImage";
 import MatchSimulation from "@/components/MatchSimulation";
-import { assignLineup, pickLegalFive, roles } from "@/lib/lineup-roles";
+import { assignLineup, roles } from "@/lib/lineup-roles";
 import { trackEvent } from "@/lib/gtag";
 import type { Tactic } from "@/lib/match-simulation";
 
 type Player = { id: number; name: string; team: string; position: string; pts: number; reb: number; ast: number; cost: number; score: number; games: number };
-type Attempt = { attempt_number: number; score_for: number; score_against: number; won: boolean; margin: number };
-type BoardRow = { rank: number; name: string; value: number; score?: string; you: boolean };
-type State = { day: string; budget: number; maxAttempts: number; attempts: Attempt[]; streak: number; signedIn: boolean; community: { participants: number; beatRate: number | null }; opponent: Array<{ id: number; name: string; position: string }>; players: Player[]; leaderboards: { daily: BoardRow[]; streaks: BoardRow[] }; result?: any };
+type Attempt = { attempt_number: number; score_for: number; score_against: number; won: boolean; margin: number; spent: number };
+type BoardRow = { rank: number; name: string; value: number; score?: string; spent?: number; you: boolean };
+type State = { day: string; budget: number; opponentCost: number; difficulty: string; minBenchMinutes: number; maxAttempts: number; attempts: Attempt[]; streak: number; signedIn: boolean; community: { participants: number; beatRate: number | null }; opponent: Array<{ id: number; name: string; position: string }>; players: Player[]; leaderboards: { daily: BoardRow[]; streaks: BoardRow[] }; result?: any };
 const tactics: Array<[Tactic, string]> = [["balanced", "Balanced"], ["perimeter", "More threes"], ["inside", "Play through the center"], ["fast", "Push the pace"], ["pressure", "Defensive pressure"]];
 
 function Leaderboard({ title, subtitle, rows, format }: { title: string; subtitle: string; rows: BoardRow[]; format: (row: BoardRow) => React.ReactNode }) {
@@ -46,15 +46,36 @@ export default function DailyBeatChallenge() {
   }
   function smartBuild() {
     if (!data) return;
-    for (let ceiling = 24; ceiling >= 8; ceiling--) {
-      const candidates = data.players.filter(player => player.cost <= ceiling).sort((a, b) => b.score - a.score);
-      const starters = pickLegalFive(candidates);
-      if (starters.length !== 5) continue;
-      const starterIds = starters.map(player => player.id), starterCost = starters.reduce((sum, player) => sum + player.cost, 0);
-      const bench = candidates.filter(player => !starterIds.includes(player.id)).sort((a, b) => (b.score / b.cost) - (a.score / a.cost)).filter((player, index, list) => starterCost + player.cost + [...list].filter(other => other.id !== player.id).sort((a,b) => a.cost-b.cost).slice(0, 2).reduce((sum, other) => sum + other.cost, 0) <= data.budget).slice(0, 3);
-      if (bench.length === 3 && starterCost + bench.reduce((sum, player) => sum + player.cost, 0) <= data.budget) { setIds([...starterIds, ...bench.map(player => player.id)]); trackEvent("daily_smart_build_used"); return; }
+    let best: Player[] | null = null, bestValue = -Infinity;
+    const targetStarterMin = data.budget * .7, targetStarterMax = data.budget * .75;
+    const starterPool = [...data.players].sort((a, b) => b.score - a.score);
+    const startersByCost = new Map<number, Player[]>();
+    let states: Array<{ players: Player[]; cost: number; value: number }> = [{ players: [], cost: 0, value: 0 }];
+    for (const role of ["G", "G", "F", "F", "C"] as const) {
+      const choices = starterPool.filter(player => roles(player.position).includes(role)).slice(0, 45);
+      states = states.flatMap(state => choices.filter(player => !state.players.some(existing => existing.id === player.id)).map(player => ({ players: [...state.players, player], cost: state.cost + player.cost, value: state.value + player.score }))).filter(state => state.cost <= targetStarterMax).sort((a, b) => b.value - a.value).slice(0, 1600);
     }
-    setError("Unable to create a legal rotation automatically.");
+    for (const state of states) {
+      if (state.cost < targetStarterMin) continue;
+      const incumbent = startersByCost.get(state.cost);
+      if (!incumbent || state.value > incumbent.reduce((sum, player) => sum + player.score, 0)) startersByCost.set(state.cost, state.players);
+    }
+    for (const [starterCost, starters] of Array.from(startersByCost.entries())) {
+      const starterIds = starters.map(player => player.id);
+      const eligible = data.players.filter(player => !starterIds.includes(player.id));
+      const benchPool = Array.from(new Map([...eligible.slice(0, 40), ...[...eligible].sort((a, b) => a.cost - b.cost || b.score - a.score).slice(0, 30)].map(player => [player.id, player])).values());
+      for (let a = 0; a < benchPool.length - 2; a++) for (let b = a + 1; b < benchPool.length - 1; b++) for (let c = b + 1; c < benchPool.length; c++) {
+        const bench = [benchPool[a], benchPool[b], benchPool[c]];
+        const totalCost = starterCost + bench.reduce((sum, player) => sum + player.cost, 0);
+        if (totalCost > data.budget || totalCost < data.budget - 5) continue;
+        const value = [...starters, ...bench].reduce((sum, player) => sum + player.score, 0) + totalCost / 100;
+        if (value > bestValue) { best = [...starters, ...bench]; bestValue = value; }
+      }
+    }
+    if (best) {
+      setIds(best.map(player => player.id));
+      trackEvent("daily_smart_build_used", { budget_used: best.reduce((sum, player) => sum + player.cost, 0) });
+    } else setError("Unable to create a legal rotation automatically.");
   }
   async function play() {
     if (!data || !legal || busy) return;
@@ -62,7 +83,7 @@ export default function DailyBeatChallenge() {
     try {
       const response = await fetch("/api/daily-beat", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ day: data.day, ids, tactic }) });
       const body = await response.json(); if (!response.ok) throw Error(body.error);
-      setData(body); trackEvent("daily_attempt_completed", { attempt: body.attempts.length, won: body.attempts.at(-1)?.won ? "yes" : "no" });
+      setData(body); trackEvent("daily_attempt_completed", { attempt: body.attempts.length, won: body.attempts.at(-1)?.won ? "yes" : "no", budget_used: spent, margin: body.attempts.at(-1)?.margin });
     } catch (event) { setError((event as Error).message); } finally { setBusy(false); }
   }
 
@@ -71,7 +92,7 @@ export default function DailyBeatChallenge() {
     const best = [...data.attempts].sort((a, b) => b.margin - a.margin)[0];
     const url = `${window.location.origin}/full-court/daily`;
     const resultLine = best.won ? `Won by ${best.margin}` : best.margin === 0 ? "Draw" : `Lost by ${Math.abs(best.margin)}`;
-    const text = `FIVEOUT Beat This Team · ${data.day}\n${best.score_for}–${best.score_against} · ${resultLine}\n🔥 ${data.streak} day streak\n${url}`;
+    const text = `FIVEOUT Beat This Team · ${data.day}\n${best.score_for}–${best.score_against} · ${resultLine}\n${best.spent}/${data.budget} budget · 🔥 ${data.streak} day streak\n${url}`;
     trackEvent("daily_share_clicked", { won: best.won ? "yes" : "no", margin: best.margin, streak: data.streak });
     try {
       const canvas = document.createElement("canvas");
@@ -105,7 +126,7 @@ export default function DailyBeatChallenge() {
       context.fillText(`🔥 ${data.streak} DAY STREAK`, 92, 463);
       context.fillStyle = "#94a3b8";
       context.font = "600 25px Arial";
-      context.fillText("fiveout.vercel.app/full-court/daily", 92, 530);
+      context.fillText(`${best.spent}/${data.budget} BUDGET  ·  fiveout.vercel.app/full-court/daily`, 92, 530);
       const blob = await new Promise<Blob | null>(resolve => canvas.toBlob(resolve, "image/png"));
       const file = blob ? new File([blob], `fiveout-daily-${data.day}.png`, { type: "image/png" }) : null;
       if (file && navigator.share && navigator.canShare?.({ files: [file] })) {
@@ -140,12 +161,12 @@ export default function DailyBeatChallenge() {
   const best = data.attempts.length ? [...data.attempts].sort((a,b) => b.margin-a.margin)[0] : null;
   return <div className="space-y-6">
     <section className="overflow-hidden rounded-[1.75rem] border border-violet-400/25 bg-[radial-gradient(circle_at_90%_0%,rgba(139,92,246,.18),transparent_36%),#0a1020]">
-      <div className="border-b border-white/10 p-6 sm:p-8"><div className="flex flex-wrap items-start justify-between gap-4"><div><p className="text-xs font-black uppercase tracking-[.25em] text-violet-300">Daily challenge · {data.day}</p><h1 className="mt-2 text-4xl font-black">Beat this team.</h1><p className="mt-3 max-w-2xl text-slate-400">Build eight players within {data.budget} points. Your first five must cover 2G · 2F · 1C. You get the same three daily simulations as everyone else.</p></div><div className="grid grid-cols-3 gap-2 text-center text-xs"><div className="rounded-xl border border-white/10 p-3"><b className="block text-xl text-white">{data.maxAttempts-data.attempts.length}</b>tries left</div><div className="rounded-xl border border-white/10 p-3"><b className="block text-xl text-white">{data.streak}</b>day streak</div><div className="rounded-xl border border-white/10 p-3"><b className="block text-xl text-white">{data.community.beatRate == null ? "—" : `${data.community.beatRate}%`}</b>beat it</div></div></div></div>
-      <div className="p-6 sm:p-8"><p className="text-xs font-black uppercase tracking-widest text-slate-500">Today’s opponent</p><div className="mt-3 grid gap-2 sm:grid-cols-4">{data.opponent.map((player, index) => <div key={player.id} className="flex items-center gap-3 rounded-xl border border-white/10 bg-white/[.035] p-3"><PlayerImage playerId={player.id} alt={player.name} className="h-11 w-11 object-contain"/><div><p className="text-sm font-bold">{player.name}</p><p className="text-xs text-slate-500">{index < 5 ? "Starter" : "Bench"} · {player.position}</p></div></div>)}</div></div>
+      <div className="border-b border-white/10 p-6 sm:p-8"><div className="flex flex-wrap items-start justify-between gap-4"><div><p className="text-xs font-black uppercase tracking-[.25em] text-violet-300">Daily challenge · {data.day}</p><h1 className="mt-2 text-4xl font-black">Beat this team.</h1><p className="mt-3 max-w-2xl text-slate-400">Build eight players within {data.budget} points. Your first five must cover 2G · 2F · 1C, and every reserve plays at least {data.minBenchMinutes} minutes. You get the same three daily simulations as everyone else.</p></div><div className="grid grid-cols-3 gap-2 text-center text-xs"><div className="rounded-xl border border-white/10 p-3"><b className="block text-xl text-white">{data.maxAttempts-data.attempts.length}</b>tries left</div><div className="rounded-xl border border-white/10 p-3"><b className="block text-xl text-white">{data.streak}</b>day streak</div><div className="rounded-xl border border-white/10 p-3"><b className="block text-xl text-white">{data.community.beatRate == null ? "—" : `${data.community.beatRate}%`}</b>beat it</div></div></div></div>
+      <div className="p-6 sm:p-8"><div className="flex flex-wrap items-center justify-between gap-3"><p className="text-xs font-black uppercase tracking-widest text-slate-500">Today’s opponent</p><div className="flex gap-2 text-xs font-black"><span className="rounded-full border border-violet-400/25 bg-violet-400/10 px-3 py-1 text-violet-200">{data.difficulty}</span><span className="rounded-full border border-white/10 px-3 py-1 text-slate-300">{data.opponentCost} pts</span></div></div><div className="mt-3 grid gap-2 sm:grid-cols-4">{data.opponent.map((player, index) => <div key={player.id} className="flex items-center gap-3 rounded-xl border border-white/10 bg-white/[.035] p-3"><PlayerImage playerId={player.id} alt={player.name} className="h-11 w-11 object-contain"/><div><p className="text-sm font-bold">{player.name}</p><p className="text-xs text-slate-500">{index < 5 ? "Starter" : "Bench"} · {player.position}</p></div></div>)}</div></div>
     </section>
-    {!!data.attempts.length && <section className="grid gap-3 sm:grid-cols-3">{data.attempts.map(attempt => <div key={attempt.attempt_number} className={`rounded-2xl border p-4 ${attempt.won ? "border-emerald-400/30 bg-emerald-400/[.06]" : "border-white/10 bg-white/[.025]"}`}><p className="text-xs uppercase text-slate-500">Attempt {attempt.attempt_number}</p><p className="mt-1 text-2xl font-black">{attempt.score_for}–{attempt.score_against}</p><p className={attempt.won ? "text-emerald-300" : "text-slate-400"}>{attempt.margin >= 10 ? "Dominated" : attempt.won ? "Beat them" : attempt.margin >= -10 ? "Survived" : "Defeated"}</p></div>)}</section>}
+    {!!data.attempts.length && <section className="grid gap-3 sm:grid-cols-3">{data.attempts.map(attempt => <div key={attempt.attempt_number} className={`rounded-2xl border p-4 ${attempt.won ? "border-emerald-400/30 bg-emerald-400/[.06]" : "border-white/10 bg-white/[.025]"}`}><p className="text-xs uppercase text-slate-500">Attempt {attempt.attempt_number}</p><p className="mt-1 text-2xl font-black">{attempt.score_for}–{attempt.score_against}</p><p className={attempt.won ? "text-emerald-300" : "text-slate-400"}>{attempt.margin >= 10 ? "Dominated" : attempt.won ? "Beat them" : attempt.margin >= -10 ? "Survived" : "Defeated"}</p><p className="mt-2 text-xs text-slate-500">{attempt.spent}/{data.budget} used · {data.budget-attempt.spent} saved</p></div>)}</section>}
     <section className="grid gap-4 lg:grid-cols-2">
-      <Leaderboard title="Today’s best margins" subtitle="Each coach’s best run today" rows={data.leaderboards.daily} format={row => <><b>{row.value > 0 ? `+${row.value}` : row.value}</b><span className="text-xs text-slate-500">{row.score}</span></>} />
+      <Leaderboard title="Today’s best margins" subtitle="Each coach’s best run today" rows={data.leaderboards.daily} format={row => <><b>{row.value > 0 ? `+${row.value}` : row.value}</b><span className="text-xs text-slate-500">{row.score} · {row.spent}/{data.budget}</span></>} />
       <Leaderboard title="Longest active streaks" subtitle="Consecutive daily appearances" rows={data.leaderboards.streaks} format={row => <b>{row.value} {row.value === 1 ? "day" : "days"}</b>} />
     </section>
     {!!data.attempts.length && <section className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-violet-400/20 bg-violet-400/[.055] p-5">
