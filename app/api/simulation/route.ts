@@ -8,6 +8,8 @@ import {
   readMatchToken,
   seededRandom,
 } from "@/lib/match-security";
+import { createHash } from "node:crypto";
+import { admin, identity } from "@/lib/guesser-server";
 export const runtime = "nodejs";
 const reply = (body: unknown, status = 200) =>
   NextResponse.json(body, { status, headers: { "Cache-Control": "no-store" } });
@@ -27,7 +29,7 @@ export async function POST(req: NextRequest) {
   } catch {
     return reply({ error: "Invalid JSON." }, 400);
   }
-  const { a, b, plans, secondHalfPlans, simulationToken, rotations, era } =
+  const { a, b, plans, secondHalfPlans, simulationToken, rotations, era, product } =
     input || {};
   if (
     [a, b].some(
@@ -110,11 +112,43 @@ export async function POST(req: NextRequest) {
       (secondHalfPlans || plans) as Tactic[],
       rotations,
     );
+    const issuedToken = matchToken(seed, issued);
+
+    // A resumed second half uses the same signed token. The unique run key keeps
+    // that second request from being counted as another Quick Match.
+    if (product === "fiveout") {
+      try {
+        const { owner, signedIn } = await identity();
+        const runKey = createHash("sha256").update(issuedToken).digest("hex");
+        const { error } = await admin().from("quick_match_runs").upsert(
+          {
+            run_key: runKey,
+            owner_key: owner,
+            signed_in: signedIn,
+            era: simulationEra,
+            tactic_a: plans[0],
+            tactic_b: (secondHalfPlans || plans)[1],
+            score_a: result.score[0],
+            score_b: result.score[1],
+            margin: result.score[0] - result.score[1],
+          },
+          { onConflict: "run_key", ignoreDuplicates: true },
+        );
+        if (error) throw error;
+      } catch (trackingError) {
+        // Usage tracking must never prevent somebody from playing a match.
+        console.error(
+          "Quick Match persistence failed",
+          trackingError instanceof Error ? trackingError.message : "Database error",
+        );
+      }
+    }
+
     return reply({
       ...result,
       season: dataset.season,
       syncedAt: dataset.syncedAt,
-      simulationToken: matchToken(seed, issued),
+      simulationToken: issuedToken,
       era: simulationEra,
     });
   } catch (e) {

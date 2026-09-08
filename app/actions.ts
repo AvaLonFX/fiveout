@@ -156,8 +156,25 @@ export async function signInWithMagicLinkAction(formData: FormData) {
       emailRedirectTo: `${origin}/auth/callback?redirect_to=${encodeURIComponent(redirectTo)}`,
     },
   });
-  if (error)
-    return redirect(`/full-court/account?error=${encodeURIComponent("Could not send the sign-in link. Please try again.")}`);
+  if (error) {
+    // Keep the email address out of logs while preserving the details needed to
+    // distinguish SMTP configuration failures from normal rate limiting.
+    console.error("FIVEOUT magic-link delivery failed", {
+      code: error.code,
+      status: error.status,
+      message: error.message,
+    });
+
+    const normalizedMessage = error.message.toLowerCase();
+    const message =
+      error.status === 429 || normalizedMessage.includes("rate limit")
+        ? "Too many sign-in links were requested. Wait a minute and try again, or continue with Google."
+        : normalizedMessage.includes("not authorized")
+          ? "Email sign-in is not available for this address yet. Continue with Google for now."
+          : "Email sign-in is temporarily unavailable. Continue with Google or try again later.";
+
+    return redirect(`/full-court/account?error=${encodeURIComponent(message)}`);
+  }
   return redirect(`/full-court/account?sent=${encodeURIComponent(email)}`);
 }
 export async function signInWithGoogleAction(formData: FormData) {

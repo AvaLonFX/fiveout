@@ -337,6 +337,7 @@ export default function MatchSimulation({
           plans,
           rotations,
           era,
+          product: standalone ? "fiveout" : "qnba",
           ...(resumeAtHalftime && result
             ? {
                 secondHalfPlans: secondPlans,
